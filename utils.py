@@ -7,6 +7,7 @@ import numpy as np
 import codecs
 from gensim.models import Word2Vec
 from pymorphy2.tokenizers import simple_word_tokenize
+from tqdm import tqdm
 
 
 def letters2vec(word, vocab, dtype=np.uint8):
@@ -76,7 +77,7 @@ class TextLoader:
         self.w2v_size = w2v.vector_size
         morph = pymorphy2.MorphAnalyzer()
         with codecs.open(input_file, "r", encoding="utf-8") as f:
-            for line in f:
+            for line in tqdm(f):
                 tokens = simple_word_tokenize(line)
                 true_vectors = []
                 letter_vectors = []
