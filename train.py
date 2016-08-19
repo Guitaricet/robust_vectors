@@ -15,6 +15,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', type=str, default='data/tinyshakespeare',
                         help='data directory containing input.txt')
+    parser.add_argument('--w2v_model', type=str,
+                        help='path to word2vec model (w2v bin format)')
     parser.add_argument('--save_dir', type=str, default='save',
                         help='directory to store checkpointed models')
     parser.add_argument('--rnn_size', type=int, default=1024,
