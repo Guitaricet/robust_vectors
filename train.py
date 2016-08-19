@@ -96,9 +96,7 @@ def train(args):
 
     model = Model(args)
 
-    config = tf.ConfigProto(
-        gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=1.))#,
-        #device_count={'GPU': 1})
+    config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=1.))
     with tf.Session(config=config) as sess:
         tf.initialize_all_variables().run()
         saver = tf.train.Saver(tf.all_variables())
@@ -109,17 +107,12 @@ def train(args):
             sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** e)))
             data_loader.reset_batch_pointer()
             state = model.initial_state.eval()
-            linear = model.prev_linear.eval()
             for b in range(data_loader.num_batches):
-                indices = deque(xrange(args.batch_size))
-                indices.rotate(randint(1, args.batch_size - 1))
                 start = time.time()
                 x, y = data_loader.next_batch()
                 feed = {model.input_data: x, model.targets: y,
-                        model.initial_state: state, model.prev_linear: linear,
-                        model.indices: indices}
-                train_loss, state, linear, _ = sess.run([model.cost, model.final_state,
-                                                         model.linear, model.train_op], feed)
+                        model.initial_state: state}
+                train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
                 end = time.time()
                 print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
                       .format(e * data_loader.num_batches + b,
