@@ -1,9 +1,5 @@
 from __future__ import print_function
 
-from collections import deque
-from random import randint
-
-import numpy as np
 import tensorflow as tf
 
 import argparse
