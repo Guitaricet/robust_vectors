@@ -1,7 +1,6 @@
 import tensorflow as tf
 from tensorflow.models.rnn import rnn_cell
 from tensorflow.models.rnn import seq2seq
-import numpy as np
 from utils import letters2vec
 from pymorphy2.tokenizers import simple_word_tokenize
 
