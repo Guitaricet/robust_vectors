@@ -72,7 +72,7 @@ class TextLoader:
         else:
             dtype = np.uint16
 
-        w2v = Word2Vec.load_word2vec_format(w2v_file)
+        w2v = Word2Vec.load_word2vec_format(w2v_file, binary=True)
         self.w2v_size = w2v.vector_size
         morph = pymorphy2.MorphAnalyzer()
         with codecs.open(input_file, "r", encoding="utf-8") as f:
@@ -85,17 +85,17 @@ class TextLoader:
                     true_vector = np.zeros(w2v.vector_size)
                     if lemma in w2v:
                         true_vector = w2v[lemma]
-                    letter_vector = letters2vec(token, dtype)
+                    letter_vector = letters2vec(token, self.vocab, dtype)
                     true_vectors.append(true_vector)
                     letter_vectors.append(letter_vector)
                 if self.xdata is None:
                     self.xdata = np.vstack(letter_vectors)
-                else:
-                    self.xdata = np.vstack(self.xdata + letter_vectors)
+                elif letter_vectors:
+                    self.xdata = np.vstack([self.xdata, np.vstack(letter_vectors)])
                 if self.ydata is None:
                     self.ydata = np.vstack(true_vectors)
-                else:
-                    self.ydata = np.vstack(self.ydata + true_vectors)
+                elif true_vectors:
+                    self.ydata = np.vstack([self.ydata, np.vstack(true_vectors)])
 
         np.save(x_file, self.xdata)
         np.save(y_file, self.ydata)
