@@ -48,6 +48,7 @@ class Model:
         self.targets = targets
 
         loss = tf.constant(0.0)
+        batch_weights = tf.constant(0.0)
 
         with tf.variable_scope("output_linear"):
             for i in xrange(len(outputs)):
@@ -62,8 +63,9 @@ class Model:
                          / tf.maximum(tf.sqrt(squared_target), 1e-12)
 
                 loss += weights * (1. - tf.matmul(output, target, transpose_b=True))
+                batch_weights += weights
 
-        self.cost = tf.reduce_sum(loss) / args.batch_size / args.seq_length
+        self.cost = tf.reduce_sum(loss) / tf.reduce_sum(batch_weights)
         self.final_state = last_state
         self.lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
