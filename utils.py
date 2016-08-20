@@ -1,5 +1,4 @@
 import os
-import collections
 
 import pymorphy2
 from six.moves import cPickle
@@ -127,10 +126,12 @@ class TextLoader:
     def next_batch(self):
         batch = self.batches[self.pointer]
 
-        map_w2v = np.vectorize(lambda x: self.w2v_vocab[x, :])
-        map_letter = np.vectorize(lambda x: self.letter_vocab[x, :])
-        x = map_letter(batch)
-        y = map_w2v(batch).astype(np.float32)
+        x = np.zeros([self.batch_size, self.seq_length, self.letter_vocab.shape[1]])
+        y = np.zeros([self.batch_size, self.seq_length, self.w2v_vocab.shape[1]])
+        for i in xrange(batch.shape[0]):
+            for j in xrange(batch.shape[1]):
+                x[i, j, :] = self.letter_vocab[batch[i, j], :]
+                y[i, j, :] = self.w2v_vocab[batch[i, j], :]
 
         self.pointer += 1
         return x, y
