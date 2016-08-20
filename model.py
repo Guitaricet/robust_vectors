@@ -56,10 +56,12 @@ class Model:
                 output = rnn_cell.linear(outputs[i], args.w2v_size, bias=True)
                 output = outputs / tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(output), 1, keep_dims=True)), 1e-12)
 
+                squared_target = tf.reduce_sum(tf.square(targets[i]), 1, keep_dims=True)
+                weights = tf.sign(squared_target)
                 target = targets[i] \
-                         / tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(targets[i]), 1, keep_dims=True)), 1e-12)
+                         / tf.maximum(tf.sqrt(squared_target), 1e-12)
 
-                loss += 1. - tf.matmul(output, target, transpose_b=True)
+                loss += weights * (1. - tf.matmul(output, target, transpose_b=True))
 
         self.cost = tf.reduce_sum(loss) / args.batch_size / args.seq_length
         self.final_state = last_state
