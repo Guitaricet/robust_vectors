@@ -122,14 +122,13 @@ class TextLoader:
         self.num_batches = int(self.tensor.size / (self.batch_size * self.seq_length))
         self.tensor = self.tensor[:self.num_batches * self.batch_size * self.seq_length]
 
-        self.batches = np.split(self.tensor.reshape(self.batch_size, -1, self.xdata.shape[1]),
-                                self.num_batches, 1)
+        self.batches = np.split(self.tensor.reshape(self.batch_size, -1), self.num_batches, 1)
 
     def next_batch(self):
         batch = self.batches[self.pointer]
 
-        map_w2v = np.vectorize(self.w2v_vocab.get)
-        map_letter = np.vectorize(self.letter_vocab.get)
+        map_w2v = np.vectorize(lambda x: self.w2v_vocab[x, :])
+        map_letter = np.vectorize(lambda x: self.letter_vocab[x, :])
         x = map_letter(batch)
         y = map_w2v(batch).astype(np.float32)
 

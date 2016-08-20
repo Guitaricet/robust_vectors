@@ -86,6 +86,8 @@ def train(args):
         assert saved_vocab == data_loader.vocab, "Data and loaded model disagree on dictionary mappings!"
 
     args.vocab_size = data_loader.vocab_size
+    args.w2v_size = data_loader.w2v_size
+    args.letter_size = data_loader.vocab_size * 7  # due to our BIE representation
 
     with open(os.path.join(args.save_dir, 'config.pkl'), 'wb') as f:
         cPickle.dump(args, f)

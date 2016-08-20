@@ -36,7 +36,7 @@ class Model:
             linears = []
             for i in xrange(len(inputs)):
                 if i > 0:
-                    tf.variable_scope.get_variable_scope().reuse_variables()
+                    tf.get_variable_scope().reuse_variables()
                 linears.append((rnn_cell.linear(inputs[i], args.rnn_size, bias=True)))
 
         outputs, last_state = seq2seq.rnn_decoder(linears, self.initial_state, cell,
@@ -53,9 +53,9 @@ class Model:
         with tf.variable_scope("output_linear"):
             for i in xrange(len(outputs)):
                 if i > 0:
-                    tf.variable_scope.get_variable_scope().reuse_variables()
+                    tf.get_variable_scope().reuse_variables()
                 output = rnn_cell.linear(outputs[i], args.w2v_size, bias=True)
-                output = outputs / tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(output), 1, keep_dims=True)), 1e-12)
+                output = output / tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(output), 1, keep_dims=True)), 1e-12)
 
                 squared_target = tf.reduce_sum(tf.square(targets[i]), 1, keep_dims=True)
                 weights = tf.sign(squared_target)
