@@ -119,7 +119,7 @@ class TextLoader:
         self.letter_vocab = np.load(letter_vocab_file)
 
     def create_batches(self):
-        self.num_batches = int(self.tensor / (self.batch_size * self.seq_length))
+        self.num_batches = int(self.tensor.size / (self.batch_size * self.seq_length))
         self.tensor = self.tensor[:self.num_batches * self.batch_size * self.seq_length]
 
         self.batches = np.split(self.xdata.reshape(self.batch_size, -1, self.xdata.shape[1]),
