@@ -122,7 +122,7 @@ class TextLoader:
         self.num_batches = int(self.tensor.size / (self.batch_size * self.seq_length))
         self.tensor = self.tensor[:self.num_batches * self.batch_size * self.seq_length]
 
-        self.batches = np.split(self.xdata.reshape(self.batch_size, -1, self.xdata.shape[1]),
+        self.batches = np.split(self.tensor.reshape(self.batch_size, -1, self.xdata.shape[1]),
                                 self.num_batches, 1)
 
     def next_batch(self):
