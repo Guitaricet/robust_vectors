@@ -1,5 +1,8 @@
 from __future__ import print_function
 
+from collections import deque
+from random import randint
+
 import tensorflow as tf
 
 import argparse
@@ -105,7 +108,6 @@ def train(args):
         if args.init_from is not None:
             saver.restore(sess, ckpt.model_checkpoint_path)
 
-        sess.run(tf.assign(model.word2vec, data_loader.w2v_vocab))
         sess.run(tf.assign(model.embedding, data_loader.letter_vocab))
 
         check_op = tf.add_check_numerics_ops()
@@ -114,10 +116,12 @@ def train(args):
             data_loader.reset_batch_pointer()
             state = model.initial_state.eval()
             for b in range(data_loader.num_batches):
+                indices = deque(xrange(args.batch_size))
+                indices.rotate(randint(1, args.batch_size - 1))
                 start = time.time()
                 batch = data_loader.next_batch()
-                feed = {model.input_data: batch, model.initial_state: state}
-                train_loss, state, _, _ = sess.run([model.cost, model.final_state, model.train_op, check_op], feed)
+                feed = {model.input_data: batch, model.initial_state: state, model.indices: indices}
+                train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
                 end = time.time()
                 print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
                       .format(e * data_loader.num_batches + b,

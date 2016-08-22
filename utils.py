@@ -1,10 +1,8 @@
 import os
 
-import pymorphy2
 from six.moves import cPickle
 import numpy as np
 import codecs
-from gensim.models import Word2Vec
 from pymorphy2.tokenizers import simple_word_tokenize
 from tqdm import tqdm
 from collections import Counter
@@ -50,26 +48,23 @@ class TextLoader:
         input_file = os.path.join(args.data_dir, "input.txt")
         vocab_file = os.path.join(args.data_dir, "vocab.pkl")
         tensor_file = os.path.join(args.data_dir, "data.npy")
-        w2v_vocab_file = os.path.join(args.data_dir, "w2v_vocab.npy")
         letter_vocab_file = os.path.join(args.data_dir, "letter_vocab.npy")
-        w2v_file = args.w2v_model
 
         self.xdata = None
         self.ydata = None
 
         if not (os.path.exists(vocab_file)
                 and os.path.exists(tensor_file)
-                and os.path.exists(letter_vocab_file)
-                and os.path.exists(w2v_vocab_file)):
+                and os.path.exists(letter_vocab_file)):
             print("reading text file")
-            self.preprocess(input_file, vocab_file, tensor_file, w2v_vocab_file, letter_vocab_file, w2v_file)
+            self.preprocess(input_file, vocab_file, tensor_file, letter_vocab_file)
         else:
             print("loading preprocessed files")
-            self.load_preprocessed(vocab_file, tensor_file, w2v_vocab_file, letter_vocab_file)
+            self.load_preprocessed(vocab_file, tensor_file, letter_vocab_file)
         self.create_batches()
         self.reset_batch_pointer()
 
-    def preprocess(self, input_file, vocab_file, tensor_file, w2v_vocab_file, letter_vocab_file, w2v_file):
+    def preprocess(self, input_file, vocab_file, tensor_file, letter_vocab_file,):
         print "creating char vocab"
         self.create_vocab(vocab_file, input_file)
 
@@ -78,44 +73,32 @@ class TextLoader:
         else:
             dtype = np.uint16
 
-        w2v = Word2Vec.load_word2vec_format(w2v_file, binary=True)
-        self.w2v_size = w2v.vector_size
-        morph = pymorphy2.MorphAnalyzer()
         with codecs.open(input_file, "r", encoding="utf-8") as f:
             all_tokens = simple_word_tokenize(f.read())
         uniq_tokens = Counter(all_tokens)
         count_pairs = sorted(uniq_tokens.items(), key=lambda x: -x[1])
         tokens, _ = zip(*count_pairs)
         tokens_vocab = dict(zip(tokens, xrange(len(tokens))))
-        true_vectors = []
         letter_vectors = []
         print "creating vocabs for w2v & letters"
         for token in tqdm(tokens):
-            lemma = morph.parse(token)[0].normal_form
-            true_vector = np.zeros(w2v.vector_size)
-            if lemma in w2v:
-                true_vector = w2v[lemma]
             letter_vector = letters2vec(token, self.vocab, dtype)
-            true_vectors.append(true_vector)
             letter_vectors.append(letter_vector)
 
-        self.w2v_vocab = np.vstack(true_vectors)
         self.letter_vocab = np.vstack(letter_vectors)
         self.tensor = np.array(list(map(tokens_vocab.get, all_tokens)))
         self.word_vocab_size = len(uniq_tokens)
+        self.letter_size = self.letter_vocab.shape[1]
 
         np.save(tensor_file, self.tensor)
-        np.save(w2v_vocab_file, self.w2v_vocab)
         np.save(letter_vocab_file, self.letter_vocab)
 
-    def load_preprocessed(self, vocab_file, tensor_file, w2v_vocab_file, letter_vocab_file):
+    def load_preprocessed(self, vocab_file, tensor_file, letter_vocab_file):
         with open(vocab_file, 'rb') as f:
             self.chars = cPickle.load(f)
         self.vocab_size = len(self.chars)
         self.vocab = dict(zip(self.chars, range(len(self.chars))))
         self.tensor = np.load(tensor_file)
-        self.w2v_vocab = np.load(w2v_vocab_file)
-        self.w2v_size = self.w2v_vocab.shape[1]
         self.letter_vocab = np.load(letter_vocab_file)
         self.letter_size = self.letter_vocab.shape[1]
         self.word_vocab_size = self.letter_vocab.shape[0]

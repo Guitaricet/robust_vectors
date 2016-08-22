@@ -33,10 +33,6 @@ class Model:
             inputs = tf.split(1, args.seq_length, tf.nn.embedding_lookup(self.embedding, self.input_data))
             inputs = [tf.squeeze(input_, [1]) for input_ in inputs]
 
-            self.word2vec = tf.get_variable("w2v_embedding", [args.word_vocab_size, args.w2v_size])
-            targets = tf.split(1, args.seq_length, tf.nn.embedding_lookup(self.word2vec, self.input_data))
-            targets = [tf.squeeze(input_, [1]) for input_ in targets]
-
         with tf.variable_scope("input_linear"):
             linears = []
             for i in xrange(len(inputs)):
@@ -49,24 +45,23 @@ class Model:
                                                   scope='rnnlm')
 
         loss = tf.constant(0.0)
-        batch_weights = tf.constant(0.0)
+        final_vectors = []
 
+        self.indices = tf.zeros([args.batch_size], dtype=tf.int32)
         with tf.variable_scope("output_linear"):
-            for i in xrange(len(outputs)):
+            for i in xrange(0, len(outputs)):
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
                 output = rnn_cell.linear(outputs[i], args.w2v_size, bias=True)
                 output = output / tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(output), 1, keep_dims=True)), 1e-12)
+                diff_linear = tf.gather(output, self.indices)
+                if i > 0:
+                    loss += (1. - tf.matmul(output, final_vectors[-1], transpose_b=True))
+                    loss += tf.maximum(0.0, tf.matmul(output, diff_linear, transpose_b=True))
+                final_vectors.append(output)
 
-                squared_target = tf.reduce_sum(tf.square(targets[i]), 1, keep_dims=True)
-                weights = tf.sign(squared_target)
-                target = targets[i] \
-                         / tf.maximum(tf.sqrt(squared_target), 1e-12)
-
-                loss += weights * (1. - tf.matmul(output, target, transpose_b=True))
-                batch_weights += weights
-        self.targets = targets
-        self.cost = tf.reduce_sum(loss) / tf.reduce_sum(batch_weights)
+        self.targets = outputs
+        self.cost = tf.reduce_sum(loss) / args.batch_size / args.seq_length
         self.final_state = last_state
         self.lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
