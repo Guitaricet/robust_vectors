@@ -56,8 +56,8 @@ class Model:
                 output = output / tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(output), 1, keep_dims=True)), 1e-12)
                 diff_linear = tf.gather(output, self.indices)
                 if i > 0:
-                    loss += (1. - tf.matmul(output, final_vectors[-1], transpose_b=True))
-                    loss += tf.maximum(0.0, tf.matmul(output, diff_linear, transpose_b=True))
+                    loss += tf.log(1. + tf.exp(-tf.matmul(output, final_vectors[-1], transpose_b=True)))
+                    loss += tf.log(1. + tf.matmul(output, diff_linear, transpose_b=True))
                 final_vectors.append(output)
 
         self.targets = outputs
