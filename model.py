@@ -30,7 +30,8 @@ class Model:
 
         with tf.device("/cpu:0"):
             self.embedding = tf.get_variable("letter_embedding", [args.word_vocab_size, args.letter_size])
-            inputs = tf.split(1, args.seq_length, tf.nn.embedding_lookup(self.embedding, self.input_data))
+            inputs = tf.split(1, args.seq_length,
+                              tf.stop_gradient(tf.nn.embedding_lookup(self.embedding, self.input_data)))
             inputs = [tf.squeeze(input_, [1]) for input_ in inputs]
 
         with tf.variable_scope("input_linear"):
