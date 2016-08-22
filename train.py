@@ -53,7 +53,7 @@ def main():
                             'model.ckpt-*'      : file(s) with model definition (created by tf)
                         """)
     parser.add_argument('--w2v_size', type=int, default=300,
-                        help='save frequency')
+                        help='number of dimensions in word embedding')
     args = parser.parse_args()
     train(args)
 
