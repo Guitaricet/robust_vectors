@@ -29,11 +29,11 @@ class Model:
         self.initial_state = cell.zero_state(args.batch_size, tf.float32)
 
         with tf.device("/cpu:0"):
-            self.embedding = tf.get_variable("letter_embedding", [args.vocab_size, args.letter_size])
+            self.embedding = tf.get_variable("letter_embedding", [args.word_vocab_size, args.letter_size])
             inputs = tf.split(1, args.seq_length, tf.nn.embedding_lookup(self.embedding, self.input_data))
             inputs = [tf.squeeze(input_, [1]) for input_ in inputs]
 
-            self.word2vec = tf.get_variable("w2v_embedding", [args.vocab_size, args.letter_size])
+            self.word2vec = tf.get_variable("w2v_embedding", [args.word_vocab_size, args.w2v_size])
             targets = tf.split(1, args.seq_length, tf.nn.embedding_lookup(self.word2vec, self.input_data))
             targets = [tf.squeeze(input_, [1]) for input_ in targets]
 
