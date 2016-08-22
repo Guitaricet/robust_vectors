@@ -107,6 +107,8 @@ def train(args):
 
         sess.run(tf.assign(model.word2vec, data_loader.w2v_vocab))
         sess.run(tf.assign(model.embedding, data_loader.letter_vocab))
+
+        check_op = tf.add_check_numerics_ops()
         for e in range(args.num_epochs):
             sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** e)))
             data_loader.reset_batch_pointer()
@@ -115,7 +117,7 @@ def train(args):
                 start = time.time()
                 batch = data_loader.next_batch()
                 feed = {model.input_data: batch, model.initial_state: state}
-                train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
+                train_loss, state, _, _ = sess.run([model.cost, model.final_state, model.train_op, check_op], feed)
                 end = time.time()
                 print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
                       .format(e * data_loader.num_batches + b,
