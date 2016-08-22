@@ -52,6 +52,8 @@ def main():
                                                   Note: this file contains absolute paths, be careful when moving files around;
                             'model.ckpt-*'      : file(s) with model definition (created by tf)
                         """)
+    parser.add_argument('--w2v_size', type=int, default=300,
+                        help='save frequency')
     args = parser.parse_args()
     train(args)
 
@@ -89,7 +91,6 @@ def train(args):
         assert saved_vocab == data_loader.vocab, "Data and loaded model disagree on dictionary mappings!"
 
     args.vocab_size = data_loader.vocab_size
-    args.w2v_size = data_loader.w2v_size
     args.letter_size = data_loader.letter_size
     args.word_vocab_size = data_loader.word_vocab_size
 
