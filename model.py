@@ -28,11 +28,16 @@ class Model:
         self.input_data = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
         self.initial_state = cell.zero_state(args.batch_size, tf.float32)
 
-        with tf.device("/cpu:0"):
-            self.embedding = tf.get_variable("letter_embedding", [args.word_vocab_size, args.letter_size])
-            inputs = tf.split(1, args.seq_length,
-                              tf.stop_gradient(tf.nn.embedding_lookup(self.embedding, self.input_data)))
-            inputs = [tf.squeeze(input_, [1]) for input_ in inputs]
+        self.input = tf.zeros([1, args.letter_size])
+
+        if not infer:
+            with tf.device("/cpu:0"):
+                self.embedding = tf.get_variable("letter_embedding", [args.word_vocab_size, args.letter_size])
+                inputs = tf.split(1, args.seq_length,
+                                  tf.stop_gradient(tf.nn.embedding_lookup(self.embedding, self.input_data)))
+                inputs = [tf.squeeze(input_, [1]) for input_ in inputs]
+        else:
+            inputs = [self.input]
 
         with tf.variable_scope("input_linear"):
             linears = []
@@ -81,7 +86,7 @@ class Model:
         for token in tokens:
             x = letters2vec(token, vocab)
 
-            feed = {self.input_data: x, self.initial_state: state}
+            feed = {self.input: x, self.initial_state: state}
             [state, target] = sess.run([self.final_state, self.targets], feed)
             targets.append(target)
 
