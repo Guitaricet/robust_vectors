@@ -87,7 +87,8 @@ def train(args):
 
     args.vocab_size = data_loader.vocab_size
     args.w2v_size = data_loader.w2v_size
-    args.letter_size = data_loader.vocab_size * 7  # due to our BIE representation
+    args.letter_size = data_loader.letter_size
+    args.word_vocab_size = data_loader.word_vocab_size
 
     with open(os.path.join(args.save_dir, 'config.pkl'), 'wb') as f:
         cPickle.dump(args, f)
@@ -103,15 +104,17 @@ def train(args):
         # restore model
         if args.init_from is not None:
             saver.restore(sess, ckpt.model_checkpoint_path)
+
+        sess.run(tf.assign(model.word2vec, data_loader.w2v_vocab))
+        sess.run(tf.assign(model.embedding, data_loader.letter_vocab))
         for e in range(args.num_epochs):
             sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** e)))
             data_loader.reset_batch_pointer()
             state = model.initial_state.eval()
             for b in range(data_loader.num_batches):
                 start = time.time()
-                x, y = data_loader.next_batch()
-                feed = {model.input_data: x, model.targets: y,
-                        model.initial_state: state}
+                batch = data_loader.next_batch()
+                feed = {model.input_data: batch, model.initial_state: state}
                 train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
                 end = time.time()
                 print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \

@@ -102,6 +102,7 @@ class TextLoader:
         self.w2v_vocab = np.vstack(true_vectors)
         self.letter_vocab = np.vstack(letter_vectors)
         self.tensor = np.array(list(map(tokens_vocab.get, all_tokens)))
+        self.word_vocab_size = len(uniq_tokens)
 
         np.save(tensor_file, self.tensor)
         np.save(w2v_vocab_file, self.w2v_vocab)
@@ -116,6 +117,8 @@ class TextLoader:
         self.w2v_vocab = np.load(w2v_vocab_file)
         self.w2v_size = self.w2v_vocab.shape[1]
         self.letter_vocab = np.load(letter_vocab_file)
+        self.letter_size = self.letter_vocab.shape[1]
+        self.word_vocab_size = self.letter_vocab.shape[0]
 
     def create_batches(self):
         self.num_batches = int(self.tensor.size / (self.batch_size * self.seq_length))
@@ -125,16 +128,8 @@ class TextLoader:
 
     def next_batch(self):
         batch = self.batches[self.pointer]
-
-        x = np.zeros([self.batch_size, self.seq_length, self.letter_vocab.shape[1]])
-        y = np.zeros([self.batch_size, self.seq_length, self.w2v_vocab.shape[1]])
-        for i in xrange(batch.shape[0]):
-            for j in xrange(batch.shape[1]):
-                x[i, j, :] = self.letter_vocab[batch[i, j], :]
-                y[i, j, :] = self.w2v_vocab[batch[i, j], :]
-
         self.pointer += 1
-        return x, y
+        return batch
 
     def reset_batch_pointer(self):
         self.pointer = 0
