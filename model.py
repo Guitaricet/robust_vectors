@@ -58,7 +58,7 @@ class Model:
                 diff_linear = tf.gather(output, self.indices)
                 if i > 0:
                     loss += tf.log(1. + tf.exp(-tf.matmul(output, final_vectors[-1], transpose_b=True)))
-                    loss += tf.log(1. + tf.matmul(output, diff_linear, transpose_b=True))
+                    loss += tf.log(1. + tf.exp(tf.matmul(output, diff_linear, transpose_b=True)))
                 final_vectors.append(output)
 
         self.targets = outputs
