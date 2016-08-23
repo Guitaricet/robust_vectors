@@ -2,7 +2,7 @@ from __future__ import print_function
 
 from collections import deque
 from random import randint
-
+import numpy as np
 import tensorflow as tf
 
 import argparse
@@ -109,7 +109,7 @@ def train(args):
         if args.init_from is not None:
             saver.restore(sess, ckpt.model_checkpoint_path)
 
-        sess.run(tf.assign(model.embedding, data_loader.letter_vocab))
+        sess.run(tf.assign(model.embedding, data_loader.letter_vocab.astype(np.float16)))
 
         check_op = tf.add_check_numerics_ops()
         for e in range(args.num_epochs):

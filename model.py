@@ -66,7 +66,7 @@ class Model:
                     loss += tf.log(1. + tf.exp(tf.matmul(output, diff_linear, transpose_b=True)))
                 final_vectors.append(output)
 
-        self.targets = outputs
+        self.targets = final_vectors
         self.cost = tf.reduce_sum(loss) / args.batch_size / args.seq_length
         self.final_state = last_state
         self.lr = tf.Variable(0.0, trainable=False)
