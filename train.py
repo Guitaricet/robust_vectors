@@ -115,7 +115,7 @@ def train(args):
             data_loader.reset_batch_pointer()
             state = model.initial_state.eval()
             for b in range(data_loader.num_batches):
-                indices = deque(xrange(args.batch_size))
+                indices = deque(range(args.batch_size))
                 indices.rotate(randint(1, args.batch_size - 1))
                 start = time.time()
                 batch = data_loader.next_batch()
