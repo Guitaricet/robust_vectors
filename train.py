@@ -120,13 +120,12 @@ def train(args):
                 start = time.time()
                 batch = data_loader.next_batch()
                 feed = {model.input_data: batch, model.initial_state: state, model.indices: indices}
-                train_loss, loss, state, _ = sess.run([model.cost, model.loss, model.final_state, model.train_op], feed)
+                train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
                 end = time.time()
                 print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
                       .format(e * data_loader.num_batches + b,
                               args.num_epochs * data_loader.num_batches,
                               e, train_loss, end - start))
-                print(loss)
                 if (e * data_loader.num_batches + b) % args.save_every == 0:
                     checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
                     saver.save(sess, checkpoint_path, global_step=e * data_loader.num_batches + b)

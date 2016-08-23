@@ -28,8 +28,6 @@ class Model:
         self.input_data = tf.placeholder(tf.float32, [args.batch_size, args.seq_length, args.letter_size])
         self.initial_state = cell.zero_state(args.batch_size, tf.float32)
 
-        self.input = tf.zeros([1, args.letter_size])
-
         inputs = tf.split(1, args.seq_length, self.input_data)
         inputs = [tf.squeeze(input_, [1]) for input_ in inputs]
 
@@ -44,7 +42,7 @@ class Model:
                                                   # loop_function=loop if infer else None,
                                                   scope='rnnlm')
 
-        loss = tf.constant(0.0)
+        loss = tf.zeros([args.batch_size, args.seq_length])
         final_vectors = []
 
         self.indices = tf.zeros([args.batch_size], dtype=tf.int32)
@@ -53,16 +51,14 @@ class Model:
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
                 output = rnn_cell.linear(outputs[i], args.w2v_size, bias=True)
-                output = output / tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(output), 1, keep_dims=True)), 0.1)
-                diff_linear = tf.gather(output, self.indices)
+                output = tf.nn.l2_normalize(output, 1)
                 if i > 0:
-                    # loss += tf.log(1. + tf.exp(-tf.matmul(output, final_vectors[-1], transpose_b=True)))
-                    loss += -tf.matmul(output, final_vectors[-1], transpose_b=True)
-                    # loss += tf.log(1. + tf.exp(tf.matmul(output, diff_linear, transpose_b=True)))
-                    loss += tf.matmul(output, diff_linear, transpose_b=True)
+                    matrix = tf.matmul(output, final_vectors[-1], transpose_b=True)
+                    mask = tf.diag([-2.] * args.batch_size)
+                    matrix = matrix + mask * matrix
+                    loss += tf.log(1. + tf.exp(matrix))
                 final_vectors.append(output)
 
-        self.loss = loss
         self.targets = final_vectors
         self.cost = tf.reduce_sum(loss) / args.batch_size / args.seq_length
         self.final_state = last_state
