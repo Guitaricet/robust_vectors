@@ -92,7 +92,7 @@ class Model:
         for token in tokens:
             x = letters2vec(token, vocab)
 
-            feed = {self.input: x, self.initial_state: state}
+            feed = {self.input_data: x, self.initial_state: state}
             [state, target] = sess.run([self.final_state, self.targets], feed)
             targets.append(target)
 
