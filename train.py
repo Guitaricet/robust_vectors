@@ -109,8 +109,6 @@ def train(args):
         if args.init_from is not None:
             saver.restore(sess, ckpt.model_checkpoint_path)
 
-        sess.run(tf.assign(model.embedding, data_loader.letter_vocab.astype(np.float16)))
-
         check_op = tf.add_check_numerics_ops()
         for e in range(args.num_epochs):
             sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** e)))

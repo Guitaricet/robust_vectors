@@ -111,8 +111,11 @@ class TextLoader:
 
     def next_batch(self):
         batch = self.batches[self.pointer]
-        v_lookup = np.vectorize(lambda x: self.letter_vocab[x, :])
-
+        
+        def lookup(x):
+            d = self.letter_vocab[x, :].asarray().astype(np.float32)
+            return d
+        v_lookup = np.vectorize(lookup)
         out = v_lookup(batch.flat)
         self.pointer += 1
         return out.astype(np.float32)
