@@ -42,7 +42,8 @@ class Model:
                                                   # loop_function=loop if infer else None,
                                                   scope='rnnlm')
 
-        loss = tf.zeros([args.batch_size, args.seq_length])
+        loss1 = tf.constant(0.0)
+        loss2 = tf.constant(0.0)
         final_vectors = []
 
         self.indices = tf.zeros([args.batch_size], dtype=tf.int32)
@@ -53,10 +54,10 @@ class Model:
                     tf.get_variable_scope().reuse_variables()
                 output = rnn_cell.linear(outputs[i], args.w2v_size, bias=True)
                 output = tf.nn.l2_normalize(output, 1)
-                if i > 0:
-                    matrix = tf.matmul(output, output, transpose_b=True)
-                    matrix = matrix + mask * matrix
-                    loss += tf.log(1. + tf.exp(matrix))
+                # negative sampling
+                matrix = tf.matmul(output, output, transpose_b=True)
+                temp_loss = tf.log(1. + tf.exp(matrix))
+                loss1 += temp_loss + mask * temp_loss
                 final_vectors.append(output)
 
         seq_slices = tf.reshape(tf.concat(1, final_vectors), [args.batch_size, args.seq_length, args.w2v_size])
@@ -66,14 +67,15 @@ class Model:
             mask = tf.diag([-1.] * args.seq_length)
             for i in xrange(0, len(seq_slices)):  # should be length of batch_size
                 if i > 0:
+                    # context similarity
                     tf.get_variable_scope().reuse_variables()
-
-                    matrix = tf.matmul(seq_slices[i], seq_slices[i], transpose_b=True)
-                    matrix = matrix + mask * matrix
-                    loss += tf.log(1. + tf.exp(-matrix))
+                matrix = tf.matmul(seq_slices[i], seq_slices[i], transpose_b=True)
+                temp_loss = tf.log(1. + tf.exp(-matrix))
+                loss2 += temp_loss + mask * temp_loss
 
         self.targets = final_vectors
-        self.cost = tf.reduce_sum(loss) / args.batch_size / args.seq_length
+        self.cost = tf.reduce_sum(loss1) / args.batch_size / args.seq_length
+        self.cost += tf.reduce_sum(loss2) / args.batch_size / args.seq_length
         self.final_state = last_state
         self.lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
