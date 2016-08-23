@@ -3,6 +3,7 @@ from tensorflow.models.rnn import rnn_cell
 from tensorflow.models.rnn import seq2seq
 from utils import letters2vec
 from pymorphy2.tokenizers import simple_word_tokenize
+import numpy as np
 
 
 class Model:
@@ -49,7 +50,7 @@ class Model:
         self.indices = tf.zeros([args.batch_size], dtype=tf.int32)
         with tf.variable_scope("output_linear"):
             mask = tf.diag([-1.] * args.batch_size)
-            for i in xrange(0, len(outputs)):
+            for i in xrange(len(outputs)):
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
                 output = rnn_cell.linear(outputs[i], args.w2v_size, bias=True)
@@ -65,7 +66,7 @@ class Model:
         seq_slices = [tf.squeeze(input_, [0]) for input_ in seq_slices]
         with tf.variable_scope("additional loss"):
             mask = tf.diag([-1.] * args.seq_length)
-            for i in xrange(0, len(seq_slices)):  # should be length of batch_size
+            for i in xrange(len(seq_slices)):  # should be length of batch_size
                 if i > 0:
                     # context similarity
                     tf.get_variable_scope().reuse_variables()
@@ -93,6 +94,8 @@ class Model:
         targets = []
         for token in tokens:
             x = letters2vec(token, vocab)
+            x = np.expand_dims(x, axis=0)
+            x = np.expand_dims(x, axis=0)
 
             feed = {self.input_data: x, self.initial_state: state}
             [state, target] = sess.run([self.final_state, self.targets], feed)
