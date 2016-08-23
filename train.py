@@ -18,21 +18,17 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', type=str, default='data/tinyshakespeare',
                         help='data directory containing input.txt')
-    parser.add_argument('--w2v_model', type=str,
-                        help='path to word2vec model (w2v bin format)')
     parser.add_argument('--save_dir', type=str, default='save',
                         help='directory to store checkpointed models')
     parser.add_argument('--rnn_size', type=int, default=1024,
                         help='size of RNN hidden state')
     parser.add_argument('--num_layers', type=int, default=3,
                         help='number of layers in the RNN')
-    parser.add_argument('--linear_length', type=int, default=256,
-                        help='length of representation vector')
     parser.add_argument('--model', type=str, default='lstm',
                         help='rnn, gru, or lstm')
-    parser.add_argument('--batch_size', type=int, default=50,
+    parser.add_argument('--batch_size', type=int, default=32,
                         help='minibatch size')
-    parser.add_argument('--seq_length', type=int, default=50,
+    parser.add_argument('--seq_length', type=int, default=16,
                         help='RNN sequence length')
     parser.add_argument('--num_epochs', type=int, default=50,
                         help='number of epochs')

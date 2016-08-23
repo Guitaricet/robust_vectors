@@ -47,17 +47,30 @@ class Model:
 
         self.indices = tf.zeros([args.batch_size], dtype=tf.int32)
         with tf.variable_scope("output_linear"):
+            mask = tf.diag([-1.] * args.batch_size)
             for i in xrange(0, len(outputs)):
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
                 output = rnn_cell.linear(outputs[i], args.w2v_size, bias=True)
                 output = tf.nn.l2_normalize(output, 1)
                 if i > 0:
-                    matrix = tf.matmul(output, final_vectors[-1], transpose_b=True)
-                    mask = tf.diag([-2.] * args.batch_size)
+                    matrix = tf.matmul(output, output, transpose_b=True)
                     matrix = matrix + mask * matrix
                     loss += tf.log(1. + tf.exp(matrix))
                 final_vectors.append(output)
+
+        seq_slices = tf.reshape(tf.concat(1, final_vectors), [args.batch_size, args.seq_length, args.w2v_size])
+        seq_slices = tf.split(0, args.batch_size, seq_slices)
+        seq_slices = [tf.squeeze(input_, [0]) for input_ in seq_slices]
+        with tf.variable_scope("additional loss"):
+            mask = tf.diag([-1.] * args.seq_length)
+            for i in xrange(0, len(seq_slices)):  # should be length of batch_size
+                if i > 0:
+                    tf.get_variable_scope().reuse_variables()
+
+                    matrix = tf.matmul(seq_slices[i], seq_slices[i], transpose_b=True)
+                    matrix = matrix + mask * matrix
+                    loss += tf.log(1. + tf.exp(-matrix))
 
         self.targets = final_vectors
         self.cost = tf.reduce_sum(loss) / args.batch_size / args.seq_length
