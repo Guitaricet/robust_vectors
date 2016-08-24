@@ -1,0 +1,107 @@
+<html>
+<head>
+
+
+<link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css'>
+<script src='https://d3js.org/d3.v3.min.js'></script>
+<style>
+	.plot {
+		border-style: solid;
+		border-width: 1px;
+	}
+	.tooltip {
+		background-color: #ffffca;
+		border-style: solid;
+		border-width: 1px;
+	}
+	.dot {
+		fill: blue;
+		fill-opacity: 0.2;
+	}
+</style>
+
+<script>
+var $DATA = {{ data|safe }};
+</script>
+
+</head>
+
+<body>
+<div id='chart' class='plot'>
+</div>
+
+<script>
+
+ScatterPlot = function(data) {
+	console.log('here we go');
+	var width = 960, height = 500;
+
+	var x = d3.scale.linear()
+		.domain(d3.extent(data, function(d) {return d[0];}))
+		.range([0, width]);
+	var y = d3.scale.linear()
+		.domain(d3.extent(data, function(d) {return d[1];}))
+		.range([height, 0]);
+
+	var svg = d3.select('#chart').append('svg')
+		.style('position', 'relative')
+		.attr('width', width)
+		.attr('height', height)
+		.call(d3.behavior.zoom().x(x).y(y).on('zoom', zoom))
+		.append('g');
+
+	var circle = svg.selectAll('circle')
+		.data(data)
+		.enter()
+		  .append('circle')
+		  .attr('r', 3.5)
+		  .attr('transform', transform)
+		  .attr('class', 'dot');
+
+
+	var tooltip = d3.select('body').append('div')
+		.attr('class', 'tooltip')
+		.style('opacity', 0);
+
+	circle.on('mouseover', function(d) {
+		tooltip.transition()
+		       .duration(50)
+		       .style('opacity', 0.99);
+		tooltip.html(d[2])
+			.style('left', (d3.event.pageX + 5) + 'px')
+			.style('top', (d3.event.pageY - 28) + 'px');
+	});
+	circle.on('mouseout', function(d) {
+	      tooltip.transition()
+		      .duration(50)
+		      .style('opacity', 0);
+	});
+
+
+	function zoom() {
+		circle.attr('transform', transform);
+	}
+
+	function transform(d) {
+		return "translate(" + x(d[0]) + "," + y(d[1]) + ")";
+	}
+};
+
+// just for testing purpose
+sampledata = d3.range(2000).map(function() {
+	return [
+		d3.random.normal(0.0, 5)(),
+		d3.random.normal(0.0, 5)(),
+		"das ist label </br> multiline label"
+	];
+});
+
+
+
+
+ScatterPlot($DATA);
+
+</script>
+
+</body>
+</html>

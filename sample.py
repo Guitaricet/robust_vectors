@@ -4,6 +4,7 @@ import argparse
 import os
 from six.moves import cPickle
 from model import Model
+from tqdm import tqdm
 
 
 def main():
@@ -37,6 +38,25 @@ def sample(args):
             saver.restore(sess, ckpt.model_checkpoint_path)
 
             print model.sample(sess, vocab, args.prime)
+
+
+def sample_multi(save_dir, data):
+    with open(os.path.join(save_dir, 'config.pkl'), 'rb') as f:
+        saved_args = cPickle.load(f)
+    with open(os.path.join(save_dir, 'chars_vocab.pkl'), 'rb') as f:
+        _, vocab = cPickle.load(f)
+    model = Model(saved_args, True)
+    vectors = []
+    with tf.Session() as sess:
+        tf.initialize_all_variables().run()
+        saver = tf.train.Saver(tf.all_variables())
+        ckpt = tf.train.get_checkpoint_state(save_dir)
+        if ckpt and ckpt.model_checkpoint_path:
+            saver.restore(sess, ckpt.model_checkpoint_path)
+            for prime in tqdm(data):
+                vectors.append(model.sample(sess, vocab, prime))
+
+    return vectors
 
 if __name__ == '__main__':
     main()

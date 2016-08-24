@@ -83,7 +83,7 @@ class Model:
         optimizer = tf.train.AdamOptimizer(self.lr)
         self.train_op = optimizer.apply_gradients(zip(grads, tvars))
 
-    def sample(self, sess, vocab, prime='The '):
+    def sample(self, sess, vocab, prime=' '):
         state = self.cell.zero_state(1, tf.float32).eval()
 
         tokens = simple_word_tokenize(prime)
