@@ -44,7 +44,7 @@ def main(data_dir, template, output, save_dir):
 
     word2vectors = sample_multi(save_dir, [t[1] for t in data])
 
-    X = word2vectors
+    X = np.squeeze(np.array(word2vectors))
 
     print('Compute natural w2v clusterization quality.')
 
