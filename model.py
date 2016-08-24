@@ -62,7 +62,7 @@ class Model:
         seq_slices = tf.reshape(tf.concat(1, final_vectors), [args.batch_size, args.seq_length, args.w2v_size])
         seq_slices = tf.split(0, args.batch_size, seq_slices)
         seq_slices = [tf.squeeze(input_, [0]) for input_ in seq_slices]
-        with tf.variable_scope("additional loss"):
+        with tf.variable_scope("additional_loss"):
             for i in xrange(len(seq_slices)):  # should be length of batch_size
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
