@@ -68,8 +68,8 @@ class Model:
             mask = tf.diag([-1.] * args.seq_length)
             for i in xrange(len(seq_slices)):  # should be length of batch_size
                 if i > 0:
-                    # context similarity
                     tf.get_variable_scope().reuse_variables()
+                # context similarity
                 matrix = tf.matmul(seq_slices[i], seq_slices[i], transpose_b=True)
                 temp_loss = tf.log(1. + tf.exp(-matrix))
                 loss2 += temp_loss + mask * temp_loss
