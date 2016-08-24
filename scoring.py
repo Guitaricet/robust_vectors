@@ -12,7 +12,6 @@ from sample import sample_multi
 
 @click.command()
 @click.option('--data-dir', default='/data/yanews/docs')
-@click.option('--w2v', default='/data/rusvectores/news.model.bin')
 @click.option('--template', default='templates/vis.html')
 @click.option('--output', default='output.html')
 @click.option('--save-dir', default='save')
