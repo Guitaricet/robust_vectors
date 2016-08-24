@@ -49,7 +49,6 @@ class Model:
 
         self.indices = tf.zeros([args.batch_size], dtype=tf.int32)
         with tf.variable_scope("output_linear"):
-            mask = tf.diag([-1.] * args.batch_size)
             for i in xrange(len(outputs)):
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
@@ -57,22 +56,19 @@ class Model:
                 output = tf.nn.l2_normalize(output, 1)
                 # negative sampling
                 matrix = tf.matmul(output, output, transpose_b=True)
-                temp_loss = tf.log(1. + tf.exp(matrix))
-                loss1 += temp_loss + mask * temp_loss
+                loss1 += tf.maximum(0.0, matrix)
                 final_vectors.append(output)
 
         seq_slices = tf.reshape(tf.concat(1, final_vectors), [args.batch_size, args.seq_length, args.w2v_size])
         seq_slices = tf.split(0, args.batch_size, seq_slices)
         seq_slices = [tf.squeeze(input_, [0]) for input_ in seq_slices]
         with tf.variable_scope("additional loss"):
-            mask = tf.diag([-1.] * args.seq_length)
             for i in xrange(len(seq_slices)):  # should be length of batch_size
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
                 # context similarity
                 matrix = tf.matmul(seq_slices[i], seq_slices[i], transpose_b=True)
-                temp_loss = tf.log(1. + tf.exp(-matrix))
-                loss2 += temp_loss + mask * temp_loss
+                loss2 += 1. - matrix
 
         self.targets = final_vectors
         self.cost = tf.reduce_sum(loss1) / args.batch_size / args.seq_length
