@@ -44,12 +44,15 @@ def main(data_dir, template, output, save_dir):
 
     word2vectors = sample_multi(save_dir, [t[1] for t in data])
 
-    X = np.squeeze(np.array(word2vectors))
+    X = []
+    for vec in word2vectors:
+        X.append(np.mean(np.squeeze(np.array(vec)), axis=0))
+    X = np.array(word2vectors)
 
     print('Compute natural w2v clusterization quality.')
 
     # ATTENTION: very dirty code, just let it works
-    n = 10000
+    n = 100000
     clust_numbers = list(clusters.keys())
     selected = np.random.choice(clust_numbers, n)
 
