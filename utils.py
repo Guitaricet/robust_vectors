@@ -11,27 +11,31 @@ from collections import Counter
 def letters2vec(word, vocab, dtype=np.uint8):
     base = np.zeros(len(vocab), dtype=dtype)
 
+    def update_vector(vector, char):
+        if char in vocab:
+            vector[vocab[char]] += 1
+
     middle = np.copy(base)
     for char in word:
-        middle[vocab[char]] += 1
+        update_vector(middle, char)
 
     first = np.copy(base)
-    first[vocab[word[0]]] += 1
+    update_vector(first, word[0])
     second = np.copy(base)
     if len(word) > 1:
-        second[vocab[word[1]]] += 1
+        update_vector(second, word[1])
     third = np.copy(base)
     if len(word) > 2:
-        third[vocab[word[2]]] += 1
+        update_vector(third, word[2])
 
     end_first = np.copy(base)
-    end_first[vocab[word[-1]]] += 1
+    update_vector(end_first, word[-1])
     end_second = np.copy(base)
     if len(word) > 1:
-        end_second[vocab[word[-2]]] += 1
+        update_vector(end_second, word[-2])
     end_third = np.copy(base)
     if len(word) > 2:
-        end_third[vocab[word[-3]]] += 1
+        update_vector(end_third, word[-3])
 
     return np.concatenate([first, second, third, middle, end_third, end_second, end_first])
 
