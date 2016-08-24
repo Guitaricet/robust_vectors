@@ -70,7 +70,7 @@ class Model:
                 matrix = tf.matmul(seq_slices[i], seq_slices[i], transpose_b=True)
                 loss2 += 1. - matrix
 
-        self.targets = final_vectors
+        self.target = final_vectors[-1]
         self.cost = tf.reduce_sum(loss1) / args.batch_size / args.seq_length
         self.cost += tf.reduce_sum(loss2) / args.batch_size / args.seq_length
         self.final_state = last_state
@@ -94,7 +94,7 @@ class Model:
             x = np.expand_dims(x, axis=0)
 
             feed = {self.input_data: x, self.initial_state: state}
-            [state, target] = sess.run([self.final_state, self.targets], feed)
+            [state, target] = sess.run([self.final_state, self.target], feed)
             targets.append(target)
 
         return targets
