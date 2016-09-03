@@ -52,11 +52,10 @@ elif args.mode == "word2vec":
             tokens = simple_word_tokenize(phrase)
             vectors = []
             for token in tokens:
+                lemma = morph.parse(token)[0]
                 vector = np.zeros((w2v.vector_size,))
-                if token in w2v:
-                    vector = w2v[token]
-                elif token.lower() in w2v:
-                    vector = w2v[token.lower()]
+                if lemma in w2v:
+                    vector = w2v[lemma]
                 vectors.append(vector)
             return np.mean(vectors)
         v1 = get_mean_vec(pair["text_1"])
