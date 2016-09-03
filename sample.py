@@ -11,8 +11,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--save_dir', type=str, default='save',
                         help='model directory to store checkpointed models')
-    parser.add_argument('-n', type=int, default=500,
-                        help='number of characters to sample')
     parser.add_argument('--prime', type=str, default=' ',
                         help='prime text or file with prime text')
     parser.add_argument('-v', '--verbose', action='store_true',
