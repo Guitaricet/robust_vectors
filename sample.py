@@ -52,8 +52,10 @@ def sample_multi(save_dir, data):
         ckpt = tf.train.get_checkpoint_state(save_dir)
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(sess, ckpt.model_checkpoint_path)
-            for prime in tqdm(data):
-                vectors.append(np.mean(model.sample(sess, vocab, prime)))
+            vector = np.mean(model.sample(sess, vocab, data[0]))
+            vectors = np.zeros((len(data), vector.shape[0]))
+            for i in tqdm(range(len(data[1:]))):
+                vectors[i, :] = np.mean(model.sample(sess, vocab, data[i]))
 
     return vectors
 

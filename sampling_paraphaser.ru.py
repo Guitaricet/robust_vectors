@@ -82,7 +82,7 @@ if "robust" in args.mode:
         phrases.append(pair["text_1"])
         phrases.append(pair["text_2"])
     from sample import sample_multi
-    results = sample_multi(args.save_dir, phrases)
+    results = np.split(sample_multi(args.save_dir, phrases), axis=0)
     for i in range(0, len(results), 2):
         v1 = results[i]
         v2 = results[i + 1]
