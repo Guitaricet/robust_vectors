@@ -95,6 +95,6 @@ class Model:
 
             feed = {self.input_data: x, self.initial_state: state}
             [state, target] = sess.run([self.final_state, self.target], feed)
-            targets.append(target)
+            targets.append(np.squeeze(target))
 
         return targets

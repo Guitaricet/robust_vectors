@@ -5,6 +5,7 @@ import os
 from six.moves import cPickle
 from model import Model
 from tqdm import tqdm
+import numpy as np
 
 
 def main():
@@ -52,7 +53,7 @@ def sample_multi(save_dir, data):
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(sess, ckpt.model_checkpoint_path)
             for prime in tqdm(data):
-                vectors.append(model.sample(sess, vocab, prime))
+                vectors.append(np.mean(model.sample(sess, vocab, prime)))
 
     return vectors
 
