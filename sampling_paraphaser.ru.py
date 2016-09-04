@@ -83,9 +83,9 @@ if "robust" in args.mode:
         phrases.append(pair["text_2"])
     from sample import sample_multi
     results = sample_multi(args.save_dir, phrases)
-    for i in range(0, len(phrases), 2):
-        v1 = phrases[i]
-        v2 = phrases[i + 1]
+    for i in range(0, len(results), 2):
+        v1 = results[i]
+        v2 = results[i + 1]
         pred.append(1 - cosine(v1, v2))
     print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
 
