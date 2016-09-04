@@ -5,11 +5,10 @@ from sklearn.metrics import f1_score
 from random import random
 import argparse
 from gensim.models import Word2Vec
-import pymorphy2
-from pymorphy2.tokenizers import simple_word_tokenize
 from scipy.spatial.distance import cosine
 import numpy as np
 from tqdm import tqdm
+from pymystem3 import Mystem
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-m", "--mode", help="random, word2vec, robust", type=str, default="random")
@@ -24,7 +23,6 @@ with codecs.open(args.input_file, encoding="utf-8") as f:
     doc = etree.parse(f)
 corpus = doc.find("corpus")
 pairs = []
-true = []
 for child in corpus:
     paraph = {}
     for value in child:
@@ -32,37 +30,53 @@ for child in corpus:
     if paraph["class"] != "0":
         if paraph["class"] == "-1":
             paraph["class"] = "0"
+        # elif paraph["class"] == "0":
+        #     paraph["class"] = "1"
         paraph.pop('id_1', None)
         paraph.pop('id_2', None)
         paraph.pop('jaccard', None)
         pairs.append(paraph)
-        true.append(int(paraph["class"]))
 
-pred = []
+# pos = filter(lambda x: x["class"] == "1", pairs)
+# neg = filter(lambda x: x["class"] == "0", pairs)
+# min_len = min(len(pos), len(neg))
+# pairs = pos[:min_len] + neg[:min_len]
+true = [int(x["class"]) for x in pairs]
 
-if args.mode == "random":
+if "random" in args.mode:
     pred = [random() for _ in true]
     # pred = [0 if random() < 0.5 else 1 for _ in true]
+    print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
 
-elif args.mode == "word2vec":
+if "word2vec" in args.mode:
+    pred = []
     w2v = Word2Vec.load_word2vec_format(args.word2vec_model, binary=True)
-    morph = pymorphy2.MorphAnalyzer()
-    for pair in tqdm(pairs):
-        def get_mean_vec(phrase):
-            tokens = simple_word_tokenize(phrase)
-            vectors = []
-            for token in tokens:
-                lemma = morph.parse(token)[0]
+    m = Mystem()
+
+    def get_mean_vec(phrase):
+        tokens = m.analyze(phrase)
+        vectors = []
+        for token in tokens:
+            if "analysis" not in token:
+                continue
+            if token["analysis"]:
+                tag = token["analysis"][0]["gr"].split(',')[0]
+                if tag[-1] == "=":
+                    tag = tag[:-1]
+                lemma = token["analysis"][0]["lex"] + "_" + tag
                 vector = np.zeros((w2v.vector_size,))
                 if lemma in w2v:
                     vector = w2v[lemma]
                 vectors.append(vector)
-            return np.mean(vectors)
+        return np.mean(vectors, axis=0)
+    for pair in tqdm(pairs):
         v1 = get_mean_vec(pair["text_1"])
         v2 = get_mean_vec(pair["text_2"])
         pred.append(1 - cosine(v1, v2))
+    print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
 
-elif args.mode == "robust":
+if "robust" in args.mode:
+    pred = []
     phrases = []
     for pair in pairs:
         phrases.append(pair["text_1"])
@@ -73,9 +87,7 @@ elif args.mode == "robust":
         v1 = np.mean(phrases[i])
         v2 = np.mean(phrases[i + 1])
         pred.append(1 - cosine(v1, v2))
+    print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
 
-else:
-    raise AttributeError("Unknown working mode!")
-
-print "ROC\t=\t%.2f" % roc_auc_score(true, pred)
+print "Class ratio\t=\t%.2f" % (float(len(filter(None, true)))/len(true))
 # print "F1\t=\t%.2f" % f1_score(true, pred)
