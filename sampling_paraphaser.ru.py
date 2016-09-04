@@ -84,8 +84,8 @@ if "robust" in args.mode:
     from sample import sample_multi
     results = sample_multi(args.save_dir, phrases)
     for i in range(0, len(phrases), 2):
-        v1 = np.mean(phrases[i])
-        v2 = np.mean(phrases[i + 1])
+        v1 = phrases[i]
+        v2 = phrases[i + 1]
         pred.append(1 - cosine(v1, v2))
     print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
 
