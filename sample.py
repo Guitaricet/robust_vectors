@@ -45,7 +45,6 @@ def sample_multi(save_dir, data):
     with open(os.path.join(save_dir, 'chars_vocab.pkl'), 'rb') as f:
         _, vocab = cPickle.load(f)
     model = Model(saved_args, True)
-    vectors = []
     with tf.Session() as sess:
         tf.initialize_all_variables().run()
         saver = tf.train.Saver(tf.all_variables())
