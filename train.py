@@ -48,6 +48,8 @@ def main():
                         """)
     parser.add_argument('--w2v_size', type=int, default=300,
                         help='number of dimensions in word embedding')
+    parser.add_argument('--noise_level', type=float, default=0.05,
+                        help='probability og typo')
     args = parser.parse_args()
     train(args)
 

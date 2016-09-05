@@ -48,6 +48,7 @@ class TextLoader:
 
         self.chars = chars
         self.vocab = vocab
+        self.noise_level = args.noise_level
 
         input_file = os.path.join(args.data_dir, "input.txt")
         vocab_file = os.path.join(args.data_dir, "vocab.pkl")
@@ -124,7 +125,7 @@ class TextLoader:
         def lookup(x):
             d = np.array(self.letter_vocab[x, :]).astype(np.float32)
             n1 = np.random.choice([0, 1], size=(self.letter_size,), p=[0.95, 0.05])
-            n2 = np.random.choice([0, 1], size=(self.letter_size,), p=[0.95, 0.05])
+            n2 = np.random.choice([0, 1], size=(self.letter_size,), p=[1 - self.noise_level, self.noise_level])
             d -= n1
             d += n2
             d[d < 0] = 0
