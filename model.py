@@ -47,7 +47,6 @@ class Model:
         loss2 = tf.constant(0.0)
         final_vectors = []
 
-        self.indices = tf.zeros([args.batch_size], dtype=tf.int32)
         with tf.variable_scope("output_linear"):
             for i in xrange(len(outputs)):
                 if i > 0:
