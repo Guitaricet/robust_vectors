@@ -8,8 +8,9 @@ for root, dirs, fs in os.walk("rucorpora"):
 
 all_data = ""
 for f in tasks:
-    with codecs.open(f, encoding="utf-8") as f_in:
+    with codecs.open(f, encoding="cp1251") as f_in:
+        f_in.readline()
         soup = bs.BeautifulSoup(f_in.read())
-        all_data += soup.get_text()
+        all_data += soup.getText()
 
 print all_data
