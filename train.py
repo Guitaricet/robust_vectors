@@ -24,7 +24,7 @@ def main():
                         help='number of layers in the RNN')
     parser.add_argument('--model', type=str, default='lstm',
                         help='rnn, gru, or lstm')
-    parser.add_argument('--batch_size', type=int, default=32,
+    parser.add_argument('--batch_size', type=int, default=128,
                         help='minibatch size')
     parser.add_argument('--seq_length', type=int, default=16,
                         help='RNN sequence length')
@@ -122,6 +122,9 @@ def train(args):
                     checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
                     saver.save(sess, checkpoint_path, global_step=e * data_loader.num_batches + b)
                     print("model saved to {}".format(checkpoint_path))
+        checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
+        saver.save(sess, checkpoint_path, global_step=args.num_epochs * data_loader.num_batches)
+        print("final model saved to {}".format(checkpoint_path))
 
 
 if __name__ == '__main__':
