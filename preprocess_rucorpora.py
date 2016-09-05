@@ -14,4 +14,4 @@ for f in tqdm(tasks):
         soup = bs.BeautifulSoup(f_in.read(), "lxml")
         all_data += soup.getText().replace("`", "").replace("\n", " ")
 
-print " ".join(all_data)
+print " ".join(all_data.split())
