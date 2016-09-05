@@ -77,7 +77,7 @@ class TextLoader:
         else:
             dtype = np.uint16
 
-        with codecs.open(input_file, "r", encoding="utf-8") as f:
+        with codecs.open(input_file, "rt", encoding="utf-8") as f:
             all_tokens = simple_word_tokenize(f.read())
         uniq_tokens = Counter(all_tokens)
         count_pairs = sorted(uniq_tokens.items(), key=lambda x: -x[1])
@@ -129,7 +129,7 @@ class TextLoader:
 
     def create_vocab(self, vocab_file, input_file):
         # preparation of vocab
-        with codecs.open(input_file, "r", encoding="utf-8") as f:
+        with codecs.open(input_file, "rt", encoding="utf-8") as f:
             data = f.read()
         counter = Counter(data)
         count_pairs = sorted(counter.items(), key=lambda x: -x[1])
