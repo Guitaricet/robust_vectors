@@ -123,6 +123,11 @@ class TextLoader:
 
         def lookup(x):
             d = np.array(self.letter_vocab[x, :]).astype(np.float32)
+            n1 = np.random.choice([0, 1], size=(self.letter_size,), p=[0.95, 0.05])
+            n2 = np.random.choice([0, 1], size=(self.letter_size,), p=[0.95, 0.05])
+            d -= n1
+            d += n2
+            d[d < 0] = 0
             return d
         v_lookup = np.vectorize(lookup, otypes=[np.ndarray])
         out = v_lookup(batch.flat)
