@@ -108,6 +108,11 @@ class TextLoader:
         self.word_vocab_size = self.letter_vocab.shape[0]
 
     def create_batches(self):
+        temp_tensor = np.zeros((len(self.tensor) - self.seq_length) * self.seq_length)
+        for index in range(len(self.tensor) - self.seq_length):
+            temp_tensor[index * self.seq_length:index * self.seq_length + self.seq_length] \
+                = self.tensor[index:index + self.seq_length]
+        self.tensor = temp_tensor
         self.num_batches = int(self.tensor.size / (self.batch_size * self.seq_length))
         self.tensor = self.tensor[:self.num_batches * self.batch_size * self.seq_length]
 
