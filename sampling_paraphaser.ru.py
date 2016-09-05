@@ -71,7 +71,7 @@ if "word2vec" in args.mode:
 
     def get_mean_vec(phrase):
         tokens = m.analyze(phrase)
-        vectors = []
+        vectors = [np.zeros((w2v.vector_size,))]
         for token in tokens:
             if "analysis" not in token:
                 continue
