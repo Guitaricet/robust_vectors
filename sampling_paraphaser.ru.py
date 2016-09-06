@@ -62,7 +62,9 @@ true = [int(x["class"]) for x in pairs]
 if "random" in args.mode:
     pred = [random() for _ in true]
     # pred = [0 if random() < 0.5 else 1 for _ in true]
-    print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
+    # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
+    with open("results.txt", "at") as f_out:
+        f_out.write("random,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
 
 if "word2vec" in args.mode:
     pred = []
@@ -89,7 +91,9 @@ if "word2vec" in args.mode:
         v1 = get_mean_vec(noise_generator(pair["text_1"]))
         v2 = get_mean_vec(noise_generator(pair["text_2"]))
         pred.append(1 - cosine(v1, v2))
-    print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
+    with open("results.txt", "at") as f_out:
+        f_out.write("word2vec,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
+    # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
 
 if "robust" in args.mode:
     pred = []
@@ -103,7 +107,9 @@ if "robust" in args.mode:
         v1 = results[i]
         v2 = results[i + 1]
         pred.append(1 - cosine(v1, v2))
-    print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
+    with open("results.txt", "at") as f_out:
+        f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
+    # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
 
-print "Class ratio\t=\t%.2f" % (float(len(filter(None, true)))/len(true))
+# print "Class ratio\t=\t%.2f" % (float(len(filter(None, true)))/len(true))
 # print "F1\t=\t%.2f" % f1_score(true, pred)
