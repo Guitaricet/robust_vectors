@@ -45,7 +45,8 @@ def sample_multi(save_dir, data):
     with open(os.path.join(save_dir, 'chars_vocab.pkl'), 'rb') as f:
         _, vocab = cPickle.load(f)
     model = Model(saved_args, True)
-    with tf.Session() as sess:
+    config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
+    with tf.Session(config=config) as sess:
         tf.initialize_all_variables().run()
         saver = tf.train.Saver(tf.all_variables())
         ckpt = tf.train.get_checkpoint_state(save_dir)

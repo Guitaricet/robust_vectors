@@ -97,7 +97,7 @@ def train(args):
 
     model = Model(args)
 
-    config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=1.))
+    config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.3))
     with tf.Session(config=config) as sess:
         tf.initialize_all_variables().run()
         saver = tf.train.Saver(tf.all_variables())
