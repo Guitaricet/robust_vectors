@@ -47,6 +47,7 @@ class Model:
         loss2 = tf.constant(0.0)
         final_vectors = []
 
+        ones = tf.diag([1.] * args.batch_size)
         with tf.variable_scope("output_linear"):
             for i in xrange(len(outputs)):
                 if i > 0:
@@ -54,7 +55,7 @@ class Model:
                 output = rnn_cell.linear(outputs[i], args.w2v_size, bias=True)
                 output = tf.nn.l2_normalize(output, 1)
                 # negative sampling
-                matrix = tf.matmul(output, output, transpose_b=True)
+                matrix = tf.matmul(output, output, transpose_b=True) - ones
                 loss1 += tf.maximum(0.0, matrix)
                 final_vectors.append(output)
 
