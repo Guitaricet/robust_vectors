@@ -126,8 +126,8 @@ class TextLoader:
             d = np.array(self.letter_vocab[x, :]).astype(np.float32)
             n1 = np.random.choice([0, 1], size=(self.letter_size,), p=[0.95, 0.05])
             n2 = np.random.choice([0, 1], size=(self.letter_size,), p=[1 - self.noise_level, self.noise_level])
-            d -= n1
-            d += n2
+            d -= n1.astype(np.float32)
+            d += n2.astype(np.float32)
             d[d < 0] = 0
             return d
         v_lookup = np.vectorize(lookup, otypes=[np.ndarray])
