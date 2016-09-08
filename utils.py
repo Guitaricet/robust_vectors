@@ -109,6 +109,7 @@ class TextLoader:
         self.word_vocab_size = self.letter_vocab.shape[0]
 
     def create_batches(self):
+        self.letter_vocab = self.letter_vocab.astype(np.float32)
         temp_tensor = np.zeros((len(self.tensor) - self.seq_length) * self.seq_length)
         for index in range(len(self.tensor) - self.seq_length):
             temp_tensor[index * self.seq_length:index * self.seq_length + self.seq_length] \
@@ -123,7 +124,7 @@ class TextLoader:
         batch = self.batches[self.pointer]
 
         def lookup(x):
-            d = np.array(self.letter_vocab[x, :]).astype(np.float32)
+            d = np.array(self.letter_vocab[x, :])
             n1 = np.random.choice([0, 1], size=(self.letter_size,), p=[0.95, 0.05])
             n2 = np.random.choice([0, 1], size=(self.letter_size,), p=[1 - self.noise_level, self.noise_level])
             d -= n1.astype(np.float32)
