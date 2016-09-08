@@ -55,9 +55,6 @@ class TextLoader:
         tensor_file = os.path.join(args.data_dir, "data.npy")
         letter_vocab_file = os.path.join(args.data_dir, "letter_vocab.npy")
 
-        self.xdata = None
-        self.ydata = None
-
         if not (os.path.exists(vocab_file)
                 and os.path.exists(tensor_file)
                 and os.path.exists(letter_vocab_file)):
@@ -91,7 +88,7 @@ class TextLoader:
             letter_vectors.append(letter_vector)
 
         self.letter_vocab = np.vstack(letter_vectors)
-        self.tensor = np.array(list(map(tokens_vocab.get, all_tokens)))
+        self.tensor = np.array(list(map(tokens_vocab.get, all_tokens)), dtype=np.uint32)
         self.word_vocab_size = len(uniq_tokens)
         self.letter_size = self.letter_vocab.shape[1]
 
@@ -103,14 +100,14 @@ class TextLoader:
             self.chars = cPickle.load(f)
         self.vocab_size = len(self.chars)
         self.vocab = dict(zip(self.chars, range(len(self.chars))))
-        self.tensor = np.load(tensor_file)
+        self.tensor = np.load(tensor_file).astype(np.uint32)
         self.letter_vocab = np.load(letter_vocab_file)
         self.letter_size = self.letter_vocab.shape[1]
         self.word_vocab_size = self.letter_vocab.shape[0]
 
     def create_batches(self):
         self.letter_vocab = self.letter_vocab.astype(np.float32)
-        temp_tensor = np.zeros((len(self.tensor) - self.seq_length) * self.seq_length)
+        temp_tensor = np.zeros((len(self.tensor) - self.seq_length) * self.seq_length, dtype=np.uint32)
         for index in range(len(self.tensor) - self.seq_length):
             temp_tensor[index * self.seq_length:index * self.seq_length + self.seq_length] \
                 = self.tensor[index:index + self.seq_length]
