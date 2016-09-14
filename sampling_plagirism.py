@@ -1,5 +1,5 @@
 import codecs
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, roc_auc_score
 import os
 import argparse
 from gensim.models import Word2Vec
@@ -43,7 +43,8 @@ for filename in glob.glob(os.path.join(args.input_dir, "*.csv")):
         spamreader.fillna(0, inplace=True)
         for parts in spamreader.itertuples():
             pair = {"id": int(parts[1]), "text_1": parts[2] + " " + parts[3], "text_2": parts[4] + " " + parts[5],
-                    "decision": (float(parts[6]) + float(parts[7]) + float(parts[8]))/3}
+                    #"decision": (float(parts[6]) + float(parts[7]) + float(parts[8]))/3}
+                    "decision": float(parts[7])}
             pairs.append(pair)
 
 # pos = filter(lambda x: x["class"] == "1", pairs)
@@ -55,7 +56,8 @@ true = [x["decision"] for x in pairs]
 if "random" in args.mode:
     pred = [random() for _ in true]
     with open("results2.txt", "at") as f_out:
-        f_out.write("random,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
+        # f_out.write("random,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
+        f_out.write("random,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
 
 if "word2vec" in args.mode:
     pred = []
@@ -81,9 +83,10 @@ if "word2vec" in args.mode:
     for pair in tqdm(pairs):
         v1 = get_mean_vec(noise_generator(pair["text_1"]))
         v2 = get_mean_vec(noise_generator(pair["text_2"]))
-        pred.append(cosine(v1, v2))
+        pred.append(1 - cosine(v1, v2))
     with open("results2.txt", "at") as f_out:
-        f_out.write("word2vec,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
+        # f_out.write("word2vec,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
+        f_out.write("word2vec,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
     # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
 
 if "robust" in args.mode:
@@ -97,11 +100,12 @@ if "robust" in args.mode:
     for i in range(0, len(results), 2):
         v1 = results[i]
         v2 = results[i + 1]
-        pred.append(cosine(v1, v2))
+        pred.append(1 - cosine(v1, v2))
         if math.isnan(pred[-1]):
             pred[-1] = 0.5
     with open("results2.txt", "at") as f_out:
-        f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
+        # f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
+        f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
     # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
 
 # print "Class ratio\t=\t%.2f" % (float(len(filter(None, true)))/len(true))
