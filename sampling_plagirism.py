@@ -90,8 +90,8 @@ if "robust" in args.mode:
     pred = []
     phrases = []
     for pair in pairs:
-        phrases.append(noise_generator(pair["text_1"]))
-        phrases.append(noise_generator(pair["text_2"]))
+        phrases.append(noise_generator(pair["text_1"].decode("utf-8")))
+        phrases.append(noise_generator(pair["text_2"].decode("utf-8")))
     from sample import sample_multi
     results = np.vsplit(sample_multi(args.save_dir, phrases), len(phrases))
     for i in range(0, len(results), 2):
@@ -99,7 +99,7 @@ if "robust" in args.mode:
         v2 = results[i + 1]
         pred.append(1 - cosine(v1, v2))
         if math.isnan(pred[-1]):
-            pred[-1] = 0.
+            pred[-1] = 0.5
     with open("results2.txt", "at") as f_out:
         f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
     # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)

@@ -90,7 +90,7 @@ class Model:
         targets = []
         for token in tokens:
             x = letters2vec(token, vocab)
-            if x == np.zeros_like(x):
+            if np.array_equal(x, np.zeros_like(x)):
                 print token
             x = np.expand_dims(x, axis=0)
             x = np.expand_dims(x, axis=0)
