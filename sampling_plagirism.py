@@ -40,12 +40,10 @@ pairs = []
 for filename in glob.glob(os.path.join(args.input_dir, "*.csv")):
     with codecs.open(filename, encoding="utf-8-sig") as f:
         spamreader = pandas.read_csv(f, delimiter=';', quotechar='"')
+        spamreader.fillna(0)
         for parts in spamreader.itertuples():
-            first_expert = 0.0
-            if not math.isnan(parts[6]):
-                first_expert = float(parts[6])
             pair = {"id": int(parts[1]), "text_1": parts[2] + " " + parts[3], "text_2": parts[4] + " " + parts[5],
-                    "decision": (first_expert + float(parts[7]) + float(parts[8]))/3}
+                    "decision": (float(parts[6]) + float(parts[7]) + float(parts[8]))/3}
             pairs.append(pair)
 
 # pos = filter(lambda x: x["class"] == "1", pairs)
@@ -56,8 +54,6 @@ true = [x["decision"] for x in pairs]
 
 if "random" in args.mode:
     pred = [random() for _ in true]
-    # pred = [0 if random() < 0.5 else 1 for _ in true]
-    # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
     with open("results2.txt", "at") as f_out:
         f_out.write("random,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
 
