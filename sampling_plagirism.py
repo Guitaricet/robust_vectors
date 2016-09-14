@@ -81,7 +81,7 @@ if "word2vec" in args.mode:
     for pair in tqdm(pairs):
         v1 = get_mean_vec(noise_generator(pair["text_1"]))
         v2 = get_mean_vec(noise_generator(pair["text_2"]))
-        pred.append(1 - cosine(v1, v2))
+        pred.append(cosine(v1, v2))
     with open("results2.txt", "at") as f_out:
         f_out.write("word2vec,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
     # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
@@ -97,7 +97,7 @@ if "robust" in args.mode:
     for i in range(0, len(results), 2):
         v1 = results[i]
         v2 = results[i + 1]
-        pred.append(1 - cosine(v1, v2))
+        pred.append(cosine(v1, v2))
         if math.isnan(pred[-1]):
             pred[-1] = 0.5
     with open("results2.txt", "at") as f_out:
