@@ -40,7 +40,7 @@ pairs = []
 for filename in glob.glob(os.path.join(args.input_dir, "*.csv")):
     with codecs.open(filename, encoding="utf-8-sig") as f:
         spamreader = pandas.read_csv(f, delimiter=';', quotechar='"')
-        spamreader.fillna(0)
+        spamreader.fillna(0, inplace=True)
         for parts in spamreader.itertuples():
             pair = {"id": int(parts[1]), "text_1": parts[2] + " " + parts[3], "text_2": parts[4] + " " + parts[5],
                     "decision": (float(parts[6]) + float(parts[7]) + float(parts[8]))/3}
