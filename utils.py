@@ -2,10 +2,10 @@ import os
 
 from six.moves import cPickle
 import numpy as np
-import codecs
-from pymorphy2.tokenizers import simple_word_tokenize
 from tqdm import tqdm
 from collections import Counter
+from nltk.tokenize import word_tokenize
+from nltk.corpus import reuters
 
 
 def letters2vec(word, vocab, dtype=np.uint8):
@@ -50,7 +50,6 @@ class TextLoader:
         self.vocab = vocab
         self.noise_level = args.noise_level
 
-        input_file = os.path.join(args.data_dir, "input.txt")
         vocab_file = os.path.join(args.data_dir, "vocab.pkl")
         tensor_file = os.path.join(args.data_dir, "data.npy")
         letter_vocab_file = os.path.join(args.data_dir, "letter_vocab.npy")
@@ -59,24 +58,23 @@ class TextLoader:
                 and os.path.exists(tensor_file)
                 and os.path.exists(letter_vocab_file)):
             print("reading text file")
-            self.preprocess(input_file, vocab_file, tensor_file, letter_vocab_file)
+            self.preprocess(vocab_file, tensor_file, letter_vocab_file)
         else:
             print("loading preprocessed files")
             self.load_preprocessed(vocab_file, tensor_file, letter_vocab_file)
         self.create_batches()
         self.reset_batch_pointer()
 
-    def preprocess(self, input_file, vocab_file, tensor_file, letter_vocab_file,):
+    def preprocess(self, vocab_file, tensor_file, letter_vocab_file, ):
         print "creating char vocab"
-        self.create_vocab(vocab_file, input_file)
+        self.create_vocab(vocab_file)
 
         if self.vocab_size < 256:
             dtype = np.uint8
         else:
             dtype = np.uint16
 
-        with codecs.open(input_file, "rt", encoding="utf-8") as f:
-            all_tokens = simple_word_tokenize(f.read())
+        all_tokens = word_tokenize(" ".join(reuters.sentences()))
         uniq_tokens = Counter(all_tokens)
         count_pairs = sorted(uniq_tokens.items(), key=lambda x: -x[1])
         tokens, _ = zip(*count_pairs)
@@ -128,6 +126,7 @@ class TextLoader:
             d += n2.astype(np.float32)
             d[d < 0] = 0
             return d
+
         v_lookup = np.vectorize(lookup, otypes=[np.ndarray])
         out = v_lookup(batch.flat)
         self.pointer += 1
@@ -136,10 +135,9 @@ class TextLoader:
     def reset_batch_pointer(self):
         self.pointer = 0
 
-    def create_vocab(self, vocab_file, input_file):
+    def create_vocab(self, vocab_file):
         # preparation of vocab
-        with codecs.open(input_file, "rt", encoding="utf-8") as f:
-            data = f.read()
+        data = " ".join(reuters.sentences())
         counter = Counter(data)
         count_pairs = sorted(counter.items(), key=lambda x: -x[1])
         temp_chars, _ = zip(*count_pairs)
