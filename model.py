@@ -1,9 +1,10 @@
 import tensorflow as tf
-from tensorflow.models.rnn import rnn_cell
-from tensorflow.models.rnn import seq2seq
 from utils import letters2vec
 from pymorphy2.tokenizers import simple_word_tokenize
 import numpy as np
+
+rnn_cell = tf.nn.rnn_cell
+seq2seq = tf.nn.seq2seq
 
 
 class Model:
@@ -37,7 +38,7 @@ class Model:
             for i in xrange(len(inputs)):
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
-                linears.append((rnn_cell.linear(inputs[i], args.rnn_size, bias=True)))
+                linears.append((rnn_cell._linear(inputs[i], args.rnn_size, bias=True)))
 
         outputs, last_state = seq2seq.rnn_decoder(linears, self.initial_state, cell,
                                                   # loop_function=loop if infer else None,
@@ -52,7 +53,7 @@ class Model:
             for i in xrange(len(outputs)):
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
-                output = rnn_cell.linear(outputs[i], args.w2v_size, bias=True)
+                output = rnn_cell._linear(outputs[i], args.w2v_size, bias=True)
                 output = tf.nn.l2_normalize(output, 1)
                 # negative sampling
                 matrix = tf.matmul(output, output, transpose_b=True) - ones
