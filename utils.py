@@ -74,7 +74,7 @@ class TextLoader:
         else:
             dtype = np.uint16
 
-        all_tokens = word_tokenize(" ".join(reuters.sentences()))
+        all_tokens = [item for sublist in reuters.sents() for item in sublist]
         uniq_tokens = Counter(all_tokens)
         count_pairs = sorted(uniq_tokens.items(), key=lambda x: -x[1])
         tokens, _ = zip(*count_pairs)
@@ -137,7 +137,10 @@ class TextLoader:
 
     def create_vocab(self, vocab_file):
         # preparation of vocab
-        data = " ".join(reuters.sentences())
+        data = sum(reuters.sents(), [])
+        counter = Counter()
+        for d in tqdm(data):
+            counter.update(Counter(d))
         counter = Counter(data)
         count_pairs = sorted(counter.items(), key=lambda x: -x[1])
         temp_chars, _ = zip(*count_pairs)
