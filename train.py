@@ -14,7 +14,7 @@ from model import Model
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir', type=str, default='data/tinyshakespeare',
+    parser.add_argument('--data_dir', type=str, default='data',
                         help='data directory containing input.txt')
     parser.add_argument('--save_dir', type=str, default='save',
                         help='directory to store checkpointed models')
@@ -24,7 +24,7 @@ def main():
                         help='number of layers in the RNN')
     parser.add_argument('--model', type=str, default='lstm',
                         help='rnn, gru, or lstm')
-    parser.add_argument('--batch_size', type=int, default=128,
+    parser.add_argument('--batch_size', type=int, default=512,
                         help='minibatch size')
     parser.add_argument('--seq_length', type=int, default=16,
                         help='RNN sequence length')
