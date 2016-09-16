@@ -4,7 +4,6 @@ from six.moves import cPickle
 import numpy as np
 from tqdm import tqdm
 from collections import Counter
-from nltk.tokenize import word_tokenize
 from nltk.corpus import reuters
 
 
@@ -137,11 +136,10 @@ class TextLoader:
 
     def create_vocab(self, vocab_file):
         # preparation of vocab
-        data = sum(reuters.sents(), [])
         counter = Counter()
-        for d in tqdm(data):
-            counter.update(Counter(d))
-        counter = Counter(data)
+        for s in tqdm(reuters.sents()):
+            for t in s:
+                counter.update(Counter(t))
         count_pairs = sorted(counter.items(), key=lambda x: -x[1])
         temp_chars, _ = zip(*count_pairs)
         if self.chars is None:
