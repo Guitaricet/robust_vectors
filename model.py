@@ -1,6 +1,6 @@
 import tensorflow as tf
 from utils import letters2vec
-from pymorphy2.tokenizers import simple_word_tokenize
+from nltk.tokenize import word_tokenize
 import numpy as np
 
 rnn_cell = tf.nn.rnn_cell
@@ -87,7 +87,7 @@ class Model:
     def sample(self, sess, vocab, prime=' '):
         state = self.cell.zero_state(1, tf.float32).eval()
 
-        tokens = simple_word_tokenize(prime)
+        tokens = word_tokenize(prime)
         targets = []
         for token in tokens:
             x = letters2vec(token, vocab)
