@@ -17,7 +17,6 @@ import math
 parser = argparse.ArgumentParser()
 parser.add_argument("-m", "--mode", help="random, word2vec, robust", type=str, default="random")
 parser.add_argument("-s", "--save-dir", help="directory with stored robust model", type=str, default="save")
-parser.add_argument("-i", "--input-dir", help="data to check against", type=str)
 parser.add_argument("-w", "--word2vec-model", help="path to word2vec binary model", type=str, default="")
 parser.add_argument("-n", "--noise-level", help="probability of typo appearance", type=float, default=0)
 
@@ -29,7 +28,7 @@ with open(os.path.join(args.save_dir, 'chars_vocab.pkl'), 'rb') as f:
 
 def noise_generator(string):
     noised = ""
-    for c in string:F
+    for c in string:
         if random() > args.noise_level:
             noised += c
         if random() < args.noise_level:
@@ -79,8 +78,8 @@ if "word2vec" in args.mode:
                 vectors.append(vector)
         return np.mean(vectors, axis=0)
     for pair in tqdm(pairs):
-        v1 = get_mean_vec(noise_generator(pair["text_1"].decode("utf-8")))
-        v2 = get_mean_vec(noise_generator(pair["text_2"].decode("utf-8")))
+        v1 = get_mean_vec(noise_generator(pair["text_1"]))
+        v2 = get_mean_vec(noise_generator(pair["text_2"]))
         pred.append(1 - cosine(v1, v2))
     with open("results3.txt", "at") as f_out:
         # f_out.write("word2vec,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
@@ -91,8 +90,8 @@ if "robust" in args.mode:
     pred = []
     phrases = []
     for pair in pairs:
-        phrases.append(noise_generator(pair["text_1"].decode("utf-8")))
-        phrases.append(noise_generator(pair["text_2"].decode("utf-8")))
+        phrases.append(noise_generator(pair["text_1"]))
+        phrases.append(noise_generator(pair["text_2"]))
     from sample import sample_multi
     results = np.vsplit(sample_multi(args.save_dir, phrases), len(phrases))
     for i in range(0, len(results), 2):
