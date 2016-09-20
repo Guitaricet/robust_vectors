@@ -29,7 +29,7 @@ with open(os.path.join(args.save_dir, 'chars_vocab.pkl'), 'rb') as f:
 
 def noise_generator(string):
     noised = ""
-    for c in string:
+    for c in string:F
         if random() > args.noise_level:
             noised += c
         if random() < args.noise_level:
@@ -38,7 +38,7 @@ def noise_generator(string):
 
 pairs = []
 for filename in ["msr_paraphrase_test.txt", "msr_paraphrase_train.txt"]:
-    with codecs.open(filename, encoding="utf-8") as f:
+    with codecs.open(os.path.join("data", "MRPC", filename), encoding="utf-8") as f:
         f.readline()
         for line in f:
             parts = line.strip().split("\t")
