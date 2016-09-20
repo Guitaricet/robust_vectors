@@ -1,17 +1,15 @@
 import codecs
-from sklearn.metrics import mean_squared_error, roc_auc_score
+from sklearn.metrics import roc_auc_score
 import os
 import argparse
 from gensim.models import Word2Vec
 from scipy.spatial.distance import cosine
 import numpy as np
 from tqdm import tqdm
-from pymystem3 import Mystem
 from random import random, choice
 from six.moves import cPickle
-import glob
-import pandas
 import math
+from nltk.tokenize import word_tokenize
 
 
 parser = argparse.ArgumentParser()
@@ -59,22 +57,13 @@ if "random" in args.mode:
 if "word2vec" in args.mode:
     pred = []
     w2v = Word2Vec.load_word2vec_format(args.word2vec_model, binary=True)
-    m = Mystem()
 
     def get_mean_vec(phrase):
-        tokens = m.analyze(phrase)
+        tokens = word_tokenize(phrase)
         vectors = [np.zeros((w2v.vector_size,))]
         for token in tokens:
-            if "analysis" not in token:
-                continue
-            if token["analysis"]:
-                tag = token["analysis"][0]["gr"].split(',')[0]
-                if tag[-1] == "=":
-                    tag = tag[:-1]
-                lemma = token["analysis"][0]["lex"] + "_" + tag
-                vector = np.zeros((w2v.vector_size,))
-                if lemma in w2v:
-                    vector = w2v[lemma]
+            if token in w2v:
+                vector = w2v[token]
                 vectors.append(vector)
         return np.mean(vectors, axis=0)
     for pair in tqdm(pairs):
