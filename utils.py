@@ -20,23 +20,24 @@ def letters2vec(word, vocab, dtype=np.uint8):
 
     first = np.copy(base)
     update_vector(first, word[0])
-    second = np.copy(base)
-    if len(word) > 1:
-        update_vector(second, word[1])
-    third = np.copy(base)
-    if len(word) > 2:
-        update_vector(third, word[2])
+    # second = np.copy(base)
+    # if len(word) > 1:
+    #     update_vector(second, word[1])
+    # third = np.copy(base)
+    # if len(word) > 2:
+    #     update_vector(third, word[2])
 
     end_first = np.copy(base)
     update_vector(end_first, word[-1])
-    end_second = np.copy(base)
-    if len(word) > 1:
-        update_vector(end_second, word[-2])
-    end_third = np.copy(base)
-    if len(word) > 2:
-        update_vector(end_third, word[-3])
+    # end_second = np.copy(base)
+    # if len(word) > 1:
+    #     update_vector(end_second, word[-2])
+    # end_third = np.copy(base)
+    # if len(word) > 2:
+    #     update_vector(end_third, word[-3])
 
-    return np.concatenate([first, second, third, middle, end_third, end_second, end_first])
+    # return np.concatenate([first, second, third, middle, end_third, end_second, end_first])
+    return np.concatenate([first, middle, end_first])
 
 
 class TextLoader:
