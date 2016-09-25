@@ -1,4 +1,6 @@
 import tensorflow as tf
+
+from nn_utils import rnn_decoder
 from utils import letters2vec
 from nltk.tokenize import word_tokenize
 import numpy as np
@@ -43,19 +45,10 @@ class Model:
                     tf.get_variable_scope().reuse_variables()
                 linears.append((rnn_cell._linear(inputs[i], args.rnn_size, bias=True)))
 
-        with tf.variable_scope("rnn_lm", reuse=True):
-            output0, last_state = seq2seq.rnn_decoder([linears[0]], initial_state, cell,
-                                                      # loop_function=loop if infer else None,
-                                                      )
-            self.final_state = last_state
-
-            if args.seq_length > 1:
-                outputs, last_state = seq2seq.rnn_decoder(linears[1:], last_state, cell,
-                                                          # loop_function=loop if infer else None,
-                                                          )
-                outputs = output0 + outputs
-            else:
-                outputs = output0
+        outputs, last_state = rnn_decoder(linears, initial_state, cell,
+                                          # loop_function=loop if infer else None,
+                                          scope="rnnlm")
+        self.final_state = last_state
 
         loss1 = tf.constant(0.0)
         loss2 = tf.constant(0.0)
