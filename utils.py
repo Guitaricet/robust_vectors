@@ -5,6 +5,7 @@ import numpy as np
 from tqdm import tqdm
 from collections import Counter
 from nltk.corpus import reuters
+import pickle
 
 
 def letters2vec(word, vocab, dtype=np.uint8):
@@ -20,24 +21,23 @@ def letters2vec(word, vocab, dtype=np.uint8):
 
     first = np.copy(base)
     update_vector(first, word[0])
-    # second = np.copy(base)
-    # if len(word) > 1:
-    #     update_vector(second, word[1])
-    # third = np.copy(base)
-    # if len(word) > 2:
-    #     update_vector(third, word[2])
+    second = np.copy(base)
+    if len(word) > 1:
+        update_vector(second, word[1])
+    third = np.copy(base)
+    if len(word) > 2:
+        update_vector(third, word[2])
 
     end_first = np.copy(base)
     update_vector(end_first, word[-1])
-    # end_second = np.copy(base)
-    # if len(word) > 1:
-    #     update_vector(end_second, word[-2])
-    # end_third = np.copy(base)
-    # if len(word) > 2:
-    #     update_vector(end_third, word[-3])
+    end_second = np.copy(base)
+    if len(word) > 1:
+        update_vector(end_second, word[-2])
+    end_third = np.copy(base)
+    if len(word) > 2:
+        update_vector(end_third, word[-3])
 
-    # return np.concatenate([first, second, third, middle, end_third, end_second, end_first])
-    return np.concatenate([first, middle, end_first])
+    return np.concatenate([first, second, third, middle, end_third, end_second, end_first])
 
 
 class TextLoader:
@@ -86,11 +86,16 @@ class TextLoader:
             letter_vectors.append(letter_vector)
 
         self.letter_vocab = np.vstack(letter_vectors)
-        self.tensor = np.array(list(map(tokens_vocab.get, all_tokens)), dtype=np.uint32)
+        self.tensor = []
+        for sent in reuters.sents():
+            s = []
+            for t in sent:
+                s.append(tokens_vocab.get(t, 0))
+            self.tensor.append(np.array(s, dtype=np.uint32))
         self.word_vocab_size = len(uniq_tokens)
         self.letter_size = self.letter_vocab.shape[1]
-
-        np.save(tensor_file, self.tensor)
+        with open(tensor_file, "wb") as f:
+            pickle.dump(self.tensor, f)
         np.save(letter_vocab_file, self.letter_vocab)
 
     def load_preprocessed(self, vocab_file, tensor_file, letter_vocab_file):
@@ -98,18 +103,25 @@ class TextLoader:
             self.chars = cPickle.load(f)
         self.vocab_size = len(self.chars)
         self.vocab = dict(zip(self.chars, range(len(self.chars))))
-        self.tensor = np.load(tensor_file).astype(np.uint32)
+        with open(tensor_file, "rb") as f:
+            self.tensor = pickle.load(f)
         self.letter_vocab = np.load(letter_vocab_file)
         self.letter_size = self.letter_vocab.shape[1]
         self.word_vocab_size = self.letter_vocab.shape[0]
 
     def create_batches(self):
         self.letter_vocab = self.letter_vocab.astype(np.float32)
-        temp_tensor = np.zeros((len(self.tensor) - self.seq_length) * self.seq_length, dtype=np.uint32)
-        for index in range(len(self.tensor) - self.seq_length):
-            temp_tensor[index * self.seq_length:index * self.seq_length + self.seq_length] \
-                = self.tensor[index:index + self.seq_length]
-        self.tensor = temp_tensor
+        temp_tensor = np.zeros((len(self.tensor) * 20 * self.seq_length, ), dtype=np.uint32)
+        internal_index = 0
+        for sent in self.tensor:
+            index = 0
+            while len(sent) - index >= self.seq_length:
+                temp_tensor[internal_index * self.seq_length:internal_index * self.seq_length + self.seq_length] \
+                    = sent[index:index + self.seq_length]
+                internal_index += 1
+                index += 1
+
+        self.tensor = np.trim_zeros(temp_tensor, "b")
         self.num_batches = int(self.tensor.size / (self.batch_size * self.seq_length))
         self.tensor = self.tensor[:self.num_batches * self.batch_size * self.seq_length]
 

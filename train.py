@@ -26,7 +26,7 @@ def main():
                         help='rnn, gru, or lstm')
     parser.add_argument('--batch_size', type=int, default=512,
                         help='minibatch size')
-    parser.add_argument('--seq_length', type=int, default=16,
+    parser.add_argument('--seq_length', type=int, default=8,
                         help='RNN sequence length')
     parser.add_argument('--num_epochs', type=int, default=50,
                         help='number of epochs')
@@ -108,11 +108,10 @@ def train(args):
         for e in range(args.num_epochs):
             sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** e)))
             data_loader.reset_batch_pointer()
-            state = model.initial_state.eval()
             for b in tqdm(range(data_loader.num_batches)):
                 start = time.time()
                 batch = data_loader.next_batch()
-                feed = {model.input_data: batch, model.initial_state: state}
+                feed = {model.input_data: batch}
                 train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
                 end = time.time()
                 if b % 113 == 0:
