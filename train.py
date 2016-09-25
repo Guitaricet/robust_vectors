@@ -26,7 +26,7 @@ def main():
                         help='rnn, gru, or lstm')
     parser.add_argument('--batch_size', type=int, default=512,
                         help='minibatch size')
-    parser.add_argument('--seq_length', type=int, default=16,
+    parser.add_argument('--seq_length', type=int, default=8,
                         help='RNN sequence length')
     parser.add_argument('--num_epochs', type=int, default=50,
                         help='number of epochs')
@@ -108,18 +108,19 @@ def train(args):
         for e in range(args.num_epochs):
             sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** e)))
             data_loader.reset_batch_pointer()
-            state = model.initial_state.eval()
             for b in tqdm(range(data_loader.num_batches)):
                 start = time.time()
                 batch = data_loader.next_batch()
-                feed = {model.input_data: batch, model.initial_state: state}
-                train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
-                end = time.time()
-                if b % 113 == 0:
+                feed = {model.input_data: batch}
+                if b % 113 != 0:
+                    train_loss, _ = sess.run([model.cost, model.train_op], feed)
+                else:
+                    train_loss = sess.run([model.cost], feed)
+                    end = time.time()
                     print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
                           .format(e * data_loader.num_batches + b,
                                   args.num_epochs * data_loader.num_batches,
-                                  e, train_loss, end - start))
+                                  e, train_loss[0], end - start))
                 if (e * data_loader.num_batches + b) % args.save_every == 0:
                     checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
                     saver.save(sess, checkpoint_path, global_step=e * data_loader.num_batches + b)
