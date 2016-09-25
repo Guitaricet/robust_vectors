@@ -108,12 +108,13 @@ def train(args):
         for e in range(args.num_epochs):
             sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** e)))
             data_loader.reset_batch_pointer()
+            state = model.initial_state.eval()
             for b in tqdm(range(data_loader.num_batches)):
                 start = time.time()
-                batch = data_loader.next_batch()
-                feed = {model.input_data: batch}
+                batch, change = data_loader.next_batch()
+                feed = {model.input_data: batch, model.change: change, model.initial_state: state}
                 if b % 113 != 0:
-                    train_loss, _ = sess.run([model.cost, model.train_op], feed)
+                    train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
                 else:
                     train_loss = sess.run([model.cost], feed)
                     end = time.time()

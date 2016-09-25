@@ -29,6 +29,9 @@ class Model:
 
         self.input_data = tf.placeholder(tf.float32, [args.batch_size, args.seq_length, args.letter_size])
         self.initial_state = cell.zero_state(args.batch_size, tf.float32)
+        self.change = tf.placeholder(tf.bool, [args.batch_size])
+
+        initial_state = tf.select(self.change, cell.zero_state(args.batch_size, tf.float32), self.initial_state)
 
         inputs = tf.split(1, args.seq_length, self.input_data)
         inputs = [tf.squeeze(input_, [1]) for input_ in inputs]
@@ -40,9 +43,18 @@ class Model:
                     tf.get_variable_scope().reuse_variables()
                 linears.append((rnn_cell._linear(inputs[i], args.rnn_size, bias=True)))
 
-        outputs, last_state = seq2seq.rnn_decoder(linears, self.initial_state, cell,
+        output0, last_state = seq2seq.rnn_decoder([linears[0]], initial_state, cell,
                                                   # loop_function=loop if infer else None,
                                                   scope='rnnlm')
+        self.final_state = last_state
+
+        if args.seq_length > 1:
+            outputs, last_state = seq2seq.rnn_decoder(linears[1:], last_state, cell,
+                                                      # loop_function=loop if infer else None,
+                                                      scope='rnnlm')
+            outputs = output0 + outputs
+        else:
+            outputs = output0
 
         loss1 = tf.constant(0.0)
         loss2 = tf.constant(0.0)
@@ -90,13 +102,9 @@ class Model:
         tokens = word_tokenize(prime)
         targets = []
         for token in tokens:
-            x = letters2vec(token, vocab)
-            # if np.array_equal(x, np.zeros_like(x)):
-            #     print token
-            x = np.expand_dims(x, axis=0)
-            x = np.expand_dims(x, axis=0)
+            x = letters2vec(token, vocab).reshape((1, 1, -1))
 
-            feed = {self.input_data: x, self.initial_state: state}
+            feed = {self.input_data: x, self.initial_state: state, self.change: np.zeros((1,))}
             [state, target] = sess.run([self.final_state, self.target], feed)
             targets.append(np.squeeze(target))
 

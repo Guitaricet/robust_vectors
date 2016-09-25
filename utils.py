@@ -113,18 +113,21 @@ class TextLoader:
         self.letter_vocab = self.letter_vocab.astype(np.float32)
         temp_tensor = np.zeros((len(self.tensor) * 50 * self.seq_length, ), dtype=np.uint32)
         internal_index = 0
+        change = [0]
         for sent in tqdm(self.tensor):
+            change[-1] = 1
             index = 0
             while len(sent) - index >= self.seq_length:
                 temp_tensor[internal_index * self.seq_length:internal_index * self.seq_length + self.seq_length] \
                     = sent[index:index + self.seq_length]
                 internal_index += 1
                 index += 1
+                change.append(0)
 
         self.tensor = np.trim_zeros(temp_tensor, "b")
         self.num_batches = int(self.tensor.size / (self.batch_size * self.seq_length))
         self.tensor = self.tensor[:self.num_batches * self.batch_size * self.seq_length]
-
+        self.change = np.split(np.array(change[:self.num_batches * self.batch_size], dtype=np.bool), self.num_batches)
         self.batches = np.split(self.tensor.reshape(self.batch_size, -1), self.num_batches, 1)
 
     def next_batch(self):
@@ -142,7 +145,7 @@ class TextLoader:
         v_lookup = np.vectorize(lookup, otypes=[np.ndarray])
         out = v_lookup(batch.flat)
         self.pointer += 1
-        return np.array(out.tolist()).reshape([self.batch_size, self.seq_length, -1])
+        return np.array(out.tolist()).reshape([self.batch_size, self.seq_length, -1]), self.change[self.pointer]
 
     def reset_batch_pointer(self):
         self.pointer = 0
