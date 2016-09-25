@@ -112,9 +112,11 @@ def train(args):
                 start = time.time()
                 batch = data_loader.next_batch()
                 feed = {model.input_data: batch}
-                train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
-                end = time.time()
-                if b % 113 == 0:
+                if b % 113 != 0:
+                    train_loss, _ = sess.run([model.cost, model.train_op], feed)
+                else:
+                    train_loss = sess.run([model.cost], feed)
+                    end = time.time()
                     print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
                           .format(e * data_loader.num_batches + b,
                                   args.num_epochs * data_loader.num_batches,

@@ -111,9 +111,9 @@ class TextLoader:
 
     def create_batches(self):
         self.letter_vocab = self.letter_vocab.astype(np.float32)
-        temp_tensor = np.zeros((len(self.tensor) * 20 * self.seq_length, ), dtype=np.uint32)
+        temp_tensor = np.zeros((len(self.tensor) * 50 * self.seq_length, ), dtype=np.uint32)
         internal_index = 0
-        for sent in self.tensor:
+        for sent in tqdm(self.tensor):
             index = 0
             while len(sent) - index >= self.seq_length:
                 temp_tensor[internal_index * self.seq_length:internal_index * self.seq_length + self.seq_length] \
