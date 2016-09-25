@@ -43,7 +43,7 @@ class Model:
                     tf.get_variable_scope().reuse_variables()
                 linears.append((rnn_cell._linear(inputs[i], args.rnn_size, bias=True)))
 
-        with tf.variable_scope.variable_scope("rnn_lm", reuse=True):
+        with tf.variable_scope("rnn_lm", reuse=True):
             output0, last_state = seq2seq.rnn_decoder([linears[0]], initial_state, cell,
                                                       # loop_function=loop if infer else None,
                                                       )
