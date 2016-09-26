@@ -144,8 +144,10 @@ class TextLoader:
 
         v_lookup = np.vectorize(lookup, otypes=[np.ndarray])
         out = v_lookup(batch.flat)
+
+        change = self.change[self.pointer]
         self.pointer += 1
-        return np.array(out.tolist()).reshape([self.batch_size, self.seq_length, -1]), self.change[self.pointer]
+        return np.array(out.tolist()).reshape([self.batch_size, self.seq_length, -1]), change
 
     def reset_batch_pointer(self):
         self.pointer = 0
