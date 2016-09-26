@@ -73,8 +73,9 @@ class Model:
             for i in xrange(len(seq_slices)):  # should be length of batch_size
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
+                seq_context = tf.nn.l2_normalize(seq_slices[i], 1)
                 # context similarity
-                matrix = tf.matmul(seq_slices[i], seq_slices[i], transpose_b=True)
+                matrix = tf.matmul(seq_context, seq_context, transpose_b=True)
                 loss2 += tf.log(1. + tf.sigmoid(-matrix))
 
         self.target = final_vectors[-1]
