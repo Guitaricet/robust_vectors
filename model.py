@@ -61,6 +61,7 @@ class Model:
                     tf.get_variable_scope().reuse_variables()
                 output = rnn_cell._linear(outputs[i], args.w2v_size, bias=True)
                 output = tf.nn.l2_normalize(output, 1)
+                output = tf.nn.dropout(output, args.dropout_keep_prob)
                 # negative sampling
                 matrix = tf.matmul(output, output, transpose_b=True) - ones
                 loss1 += tf.maximum(0.0, matrix)
