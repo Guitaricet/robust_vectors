@@ -63,7 +63,7 @@ class Model:
                 output = tf.nn.l2_normalize(output, 1)
                 # negative sampling
                 matrix = tf.matmul(output, output, transpose_b=True) - ones
-                loss1 += tf.log(1. + tf.sigmoid(matrix))
+                loss1 += tf.maximum(0.0, matrix)
                 final_vectors.append(output)
 
         seq_slices = tf.reshape(tf.concat(1, final_vectors), [args.batch_size, args.seq_length, args.w2v_size])
@@ -76,7 +76,7 @@ class Model:
                 seq_context = tf.nn.l2_normalize(seq_slices[i], 1)
                 # context similarity
                 matrix = tf.matmul(seq_context, seq_context, transpose_b=True)
-                loss2 += tf.log(1. + tf.sigmoid(-matrix))
+                loss2 += 1. - matrix
 
         self.target = final_vectors[-1]
         self.cost = tf.reduce_sum(loss1) / args.batch_size / args.seq_length
