@@ -16,6 +16,6 @@ for s in tqdm(reuters.sents()):
     sents.append(phrase)
 
 print "start training"
-model = Word2Vec(sents, size=256, window=5, min_count=3, workers=4, iter=100, sample=1e-5)
+model = Word2Vec(sents, size=256, window=5, min_count=2, workers=4, iter=200)
 with codecs.open(os.path.join("save", "w2v_reuters"), "wb") as f_out:
     model.save(f_out)
