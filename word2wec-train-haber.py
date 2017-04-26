@@ -1,9 +1,12 @@
+import os
+import pickle
+
+import sbl2py
+import sbl2py.utils
 from gensim.models import Word2Vec
 from glob import glob
 from nltk.tokenize import sent_tokenize, word_tokenize
 from tqdm import tqdm
-from nltk.stem.snowball import SnowballStemmer
-import sbl2py
 
 corpus = []
 print "reading data"
@@ -25,7 +28,7 @@ print len(model.raw_vocab)
 with open("save/word2vec_haber", "wb") as f_out:
     model.save(f_out)
 
-import sbl2py.utils
+
 with open("data/turkish.sbl") as sbl:
     sbl_code = sbl.read()
 
@@ -33,15 +36,21 @@ py_code = sbl2py.translate_string(sbl_code)
 turkish = sbl2py.utils.module_from_code('demo_module', py_code)
 
 print "stemming"
-stemmed_corpus = []
-for sent in tqdm(clean_corpus):
-    stemmed_sent = []
-    for word in sent:
-        stemmed_sent.append(turkish.stem(word))
-    stemmed_corpus.append(stemmed_sent)
+stemmed_file = "data/42bin_haber.pkl"
+if not os.path.exists(stemmed_file):
+    stemmed_corpus = []
+    for sent in tqdm(clean_corpus):
+        stemmed_sent = []
+        for word in sent:
+            stemmed_sent.append(turkish.stem(word))
+        stemmed_corpus.append(stemmed_sent)
+    with open(stemmed_file, "wb") as f_out:
+        pickle.dump(stemmed_corpus, f_out)
+else:
+    with open(stemmed_file, "rb") as f_in:
+        stemmed_corpus = pickle.load(f_in)
 
 print "training on stemmed"
 model = Word2Vec(stemmed_corpus)
 with open("save/word2vec_haber_stemmed", "wb") as f_out:
     model.save(f_out)
-
