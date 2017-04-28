@@ -27,7 +27,7 @@ class Model:
 
         cell = cell_fn(args.rnn_size, state_is_tuple=False)
 
-        self.cell = cell = rnn_cell.MultiRNNCell([cell] * args.num_layers)
+        self.cell = cell = rnn_cell.MultiRNNCell([cell] * args.num_layers, state_is_tuple=False)
 
         self.input_data = tf.placeholder(tf.float32, [args.batch_size, args.seq_length, args.letter_size])
         self.initial_state = cell.zero_state(args.batch_size, tf.float32)
