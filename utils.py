@@ -92,7 +92,8 @@ class TextLoader:
 
         self.letter_vocab = np.vstack(letter_vectors)
         self.tensor = []
-        for sent in word_sents:
+        print("filling tensor")
+        for sent in tqdm(word_sents):
             s = []
             for t in sent:
                 s.append(tokens_vocab[t])
