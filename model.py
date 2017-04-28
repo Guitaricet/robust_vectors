@@ -5,8 +5,8 @@ from utils import letters2vec
 from nltk.tokenize import word_tokenize
 import numpy as np
 
-rnn_cell = tf.nn.rnn_cell
-seq2seq = tf.nn.seq2seq
+rnn_cell = tf.contrib.rnn.core_rnn_cell
+seq2seq = tf.contrib.rnn.core_rnn_cell
 
 
 class Model:
