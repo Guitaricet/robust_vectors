@@ -76,8 +76,9 @@ class TextLoader:
         else:
             dtype = np.uint16
 
-        all_tokens = [item for sent in sents for item in word_tokenize(sent)]
-        uniq_tokens = Counter(all_tokens)
+        uniq_tokens = Counter()
+        for sent in sents:
+            uniq_tokens.update(Counter(word_tokenize(sent)))
         count_pairs = sorted(uniq_tokens.items(), key=lambda x: -x[1])
         tokens, _ = zip(*count_pairs)
         tokens_vocab = dict(zip(tokens, xrange(len(tokens))))
