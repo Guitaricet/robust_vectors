@@ -10,6 +10,7 @@ from random import random, choice
 from six.moves import cPickle
 import math
 from nltk.tokenize import word_tokenize
+import sbl2py.utils
 
 
 parser = argparse.ArgumentParser()
@@ -34,12 +35,12 @@ def noise_generator(string):
     return noised
 
 pairs = []
-for filename in ["msr_paraphrase_test.txt", "msr_paraphrase_train.txt"]:
-    with codecs.open(os.path.join("data", "MRPC", filename), encoding="utf-8") as f:
+for filename in ["TuPC_test_set.txt", "TuPC_train_set.txt"]:
+    with codecs.open(os.path.join("data", "TuPC-2016", filename), encoding="iso-8859-9") as f:
         f.readline()
         for line in f:
             parts = line.strip().split("\t")
-            pair = {"text_1": parts[3], "text_2": parts[4], "decision": float(parts[0])}
+            pair = {"text_1": parts[0], "text_2": parts[1], "decision": float(parts[2])}
             pairs.append(pair)
 
 # pos = filter(lambda x: x["class"] == "1", pairs)
@@ -58,13 +59,21 @@ if "word2vec" in args.mode:
     pred = []
     w2v = Word2Vec.load(args.word2vec_model)
 
+    with open("data/turkish.sbl") as sbl:
+        sbl_code = sbl.read()
+
+    py_code = sbl2py.translate_string(sbl_code)
+    turkish = sbl2py.utils.module_from_code('demo_module', py_code)
+
     def get_mean_vec(phrase):
-        tokens = word_tokenize(phrase)
-        vectors = [np.zeros((w2v.vector_size,))]
+        tokens = word_tokenize(phrase.lower())
+        vectors = [np.zeros((w2v.vector_size,)) + 1e-10]
         for token in tokens:
             if token in w2v:
-                vector = w2v[token]
-                vectors.append(vector)
+                stemmed = turkish.stem(token)
+                if stemmed in w2v:
+                    vector = w2v[stemmed]
+                    vectors.append(vector)
         return np.mean(vectors, axis=0)
     for pair in tqdm(pairs):
         v1 = get_mean_vec(noise_generator(pair["text_1"]))

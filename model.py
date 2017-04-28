@@ -33,7 +33,10 @@ class Model:
         self.initial_state = cell.zero_state(args.batch_size, tf.float32)
         self.change = tf.placeholder(tf.bool, [args.batch_size])
 
-        initial_state = tf.where(self.change, cell.zero_state(args.batch_size, tf.float32), self.initial_state)
+        initial_state = tf.where(self.change,
+                                 tf.transpose(cell.zero_state(args.batch_size, tf.float32), [2, 0, 1, 3]),
+                                 tf.transpose(self.initial_state, [2, 0, 1, 3]))
+        initial_state = tf.transpose(initial_state, [1, 2, 0, 3])
 
         inputs = tf.split(1, args.seq_length, self.input_data)
         inputs = [tf.squeeze(input_, [1]) for input_ in inputs]

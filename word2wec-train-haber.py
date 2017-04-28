@@ -7,6 +7,8 @@ from gensim.models import Word2Vec
 from glob import glob
 from nltk.tokenize import sent_tokenize, word_tokenize
 from tqdm import tqdm
+import logging
+logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
 corpus = []
 print "reading data"
@@ -51,6 +53,6 @@ else:
         stemmed_corpus = pickle.load(f_in)
 
 print "training on stemmed"
-model = Word2Vec(stemmed_corpus)
+model = Word2Vec(stemmed_corpus, size=256, window=5, workers=4, iter=200)
 with open("save/word2vec_haber_stemmed", "wb") as f_out:
     model.save(f_out)
