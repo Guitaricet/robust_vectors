@@ -1,5 +1,7 @@
 import os
+from glob import glob
 
+from nltk import sent_tokenize, word_tokenize
 from six.moves import cPickle
 import numpy as np
 from tqdm import tqdm
@@ -67,14 +69,14 @@ class TextLoader:
 
     def preprocess(self, vocab_file, tensor_file, letter_vocab_file, ):
         print "creating char vocab"
-        self.create_vocab(vocab_file)
+        sents = self.create_vocab(vocab_file)
 
         if self.vocab_size < 256:
             dtype = np.uint8
         else:
             dtype = np.uint16
 
-        all_tokens = [item for sublist in reuters.sents() for item in sublist]
+        all_tokens = [item for sent in sents for item in word_tokenize(sent)]
         uniq_tokens = Counter(all_tokens)
         count_pairs = sorted(uniq_tokens.items(), key=lambda x: -x[1])
         tokens, _ = zip(*count_pairs)
@@ -153,8 +155,14 @@ class TextLoader:
 
     def create_vocab(self, vocab_file):
         # preparation of vocab
+        sents = []
+        for f in tqdm(glob(os.path.join(self.data_dir, "*/*/*"))):
+            if not f.endswith(".txt"):
+                continue
+            with open(f) as f_in:
+                sents += sent_tokenize(f_in.read().decode("iso-8859-9"))
         counter = Counter()
-        for s in tqdm(reuters.sents()):
+        for s in tqdm(sents):
             for t in s:
                 counter.update(Counter(t))
         count_pairs = sorted(counter.items(), key=lambda x: -x[1])
@@ -169,3 +177,5 @@ class TextLoader:
             self.vocab = dict(zip(self.chars, range(len(self.chars))))
         with open(vocab_file, 'wb') as f:
             cPickle.dump(self.chars, f)
+
+        return sents
