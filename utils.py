@@ -6,7 +6,6 @@ from six.moves import cPickle
 import numpy as np
 from tqdm import tqdm
 from collections import Counter
-from nltk.corpus import reuters
 import pickle
 
 
@@ -15,7 +14,7 @@ def letters2vec(word, vocab, dtype=np.uint8):
 
     def update_vector(vector, char):
         if char in vocab:
-            vector[vocab[char]] += 1
+            vector[vocab.get(char, 0)] += 1
 
     middle = np.copy(base)
     for char in word:
@@ -77,8 +76,11 @@ class TextLoader:
             dtype = np.uint16
 
         uniq_tokens = Counter()
+        word_sents = []
         for sent in sents:
-            uniq_tokens.update(Counter(word_tokenize(sent)))
+            word_s = word_tokenize(sent)
+            uniq_tokens.update(Counter(word_s))
+            word_sents.append(word_s)
         count_pairs = sorted(uniq_tokens.items(), key=lambda x: -x[1])
         tokens, _ = zip(*count_pairs)
         tokens_vocab = dict(zip(tokens, xrange(len(tokens))))
@@ -90,10 +92,10 @@ class TextLoader:
 
         self.letter_vocab = np.vstack(letter_vectors)
         self.tensor = []
-        for sent in reuters.sents():
+        for sent in word_sents:
             s = []
             for t in sent:
-                s.append(tokens_vocab.get(t, 0))
+                s.append(tokens_vocab[t])
             self.tensor.append(np.array(s, dtype=np.uint32))
         self.word_vocab_size = len(uniq_tokens)
         self.letter_size = self.letter_vocab.shape[1]
@@ -104,8 +106,9 @@ class TextLoader:
     def load_preprocessed(self, vocab_file, tensor_file, letter_vocab_file):
         with open(vocab_file, 'rb') as f:
             self.chars = cPickle.load(f)
-        self.vocab_size = len(self.chars)
-        self.vocab = dict(zip(self.chars, range(len(self.chars))))
+        self.vocab_size = len(self.chars) + 1
+        self.vocab = dict(zip(self.chars, range(1, len(self.chars) + 1)))
+        self.vocab[""] = 0
         with open(tensor_file, "rb") as f:
             self.tensor = pickle.load(f)
         self.letter_vocab = np.load(letter_vocab_file)
@@ -172,10 +175,11 @@ class TextLoader:
             self.chars = temp_chars
         elif not set(self.chars).issuperset(set(temp_chars)):
             os.write(2, "Incompatible charsets. Using substitute.")
-        self.vocab_size = len(self.chars)
+        self.vocab_size = len(self.chars) + 1
 
         if self.vocab is None:
-            self.vocab = dict(zip(self.chars, range(len(self.chars))))
+            self.vocab = dict(zip(self.chars, range(1, len(self.chars) + 1)))
+            self.vocab[""] = 0
         with open(vocab_file, 'wb') as f:
             cPickle.dump(self.chars, f)
 
