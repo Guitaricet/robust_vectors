@@ -86,7 +86,7 @@ if "word2vec" in args.mode:
 
 if "fasttext" in args.mode:
     ft = {}
-    with open("data/TuPC-2016/word_vectors.txt") as f:
+    with codecs.open("data/TuPC-2016/word_vectors.txt", encoding="iso-8859-9") as f:
         parts = f.readline().strip().split()
         ft[parts[0]] = np.array(map(float, parts[1:]))
     pred = []
