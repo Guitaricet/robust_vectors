@@ -11,6 +11,7 @@ from six.moves import cPickle
 import math
 from nltk.tokenize import word_tokenize
 import sbl2py.utils
+import fasttext
 
 
 parser = argparse.ArgumentParser()
@@ -83,6 +84,27 @@ if "word2vec" in args.mode:
         # f_out.write("word2vec,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
         f_out.write("word2vec,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
     # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
+
+if "fasttext" in args.mode:
+    ft = fasttext.load_model("wiki.tr.bin")
+    pred = []
+
+    def get_mean_vec(phrase):
+        tokens = word_tokenize(phrase.lower())
+        vectors = []
+        for token in tokens:
+            vectors.append(ft[token])
+        return np.mean(vectors, axis=0)
+
+    for pair in pairs:
+        v1 = get_mean_vec(noise_generator(pair["text_1"]))
+        v2 = get_mean_vec(noise_generator(pair["text_2"]))
+        pred.append(1 - cosine(v1, v2))
+
+    with open("results6.txt", "at") as f_out:
+        # f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
+        f_out.write("fasttext,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
+        # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
 
 if "robust" in args.mode:
     pred = []
