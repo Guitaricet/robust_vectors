@@ -96,7 +96,7 @@ if "fasttext" in args.mode:
             vectors.append(ft[token])
         return np.mean(vectors, axis=0)
 
-    for pair in pairs:
+    for pair in tqdm(pairs):
         v1 = get_mean_vec(noise_generator(pair["text_1"]))
         v2 = get_mean_vec(noise_generator(pair["text_2"]))
         pred.append(1 - cosine(v1, v2))
