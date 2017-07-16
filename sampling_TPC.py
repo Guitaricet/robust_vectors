@@ -11,7 +11,6 @@ from six.moves import cPickle
 import math
 from nltk.tokenize import word_tokenize
 import sbl2py.utils
-import fasttext
 
 
 parser = argparse.ArgumentParser()
@@ -86,7 +85,10 @@ if "word2vec" in args.mode:
     # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
 
 if "fasttext" in args.mode:
-    ft = fasttext.load_model("wiki.tr.bin")
+    ft = {}
+    with open("data/TuPC/word_vectors.txt") as f:
+        parts = f.readline().strip().split()
+        ft[parts[0]] = np.array(map(float, parts[1:]))
     pred = []
 
     def get_mean_vec(phrase):
