@@ -92,7 +92,7 @@ if "fasttext" in args.mode:
     pred = []
 
     def get_mean_vec(phrase):
-        tokens = word_tokenize(phrase.lower())
+        tokens = word_tokenize(phrase)
         vectors = []
         for token in tokens:
             vectors.append(ft[token])
