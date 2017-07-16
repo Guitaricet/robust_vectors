@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import sem
 
 types = {"random":{}, "word2vec":{}, "robust":{}}
-with open("results.txt") as f:
+with open("results6.txt") as f:
     for line in f:
         parts = line.strip().split(",")
         noise = float(parts[1])
@@ -28,7 +28,7 @@ y = [x[0] for x in x1]
 xerr = [x[2] for x in x1]
 x1 = [x[1] for x in x1]
 
-x3 = [types2["random"][0][1]] * 31
+x3 = [types2["random"][0][1]] * 11
 
 plt.figure()
 p1, = plt.plot(y, x1, 'g')
