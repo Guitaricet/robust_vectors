@@ -18,6 +18,7 @@ parser.add_argument("-s", "--save-dir", help="directory with stored robust model
 parser.add_argument("-w", "--word2vec-model", help="path to word2vec binary model", type=str, default="")
 parser.add_argument("-n", "--noise-level", help="probability of typo appearance", type=float, default=0)
 
+
 args = parser.parse_args()
 
 with open(os.path.join(args.save_dir, 'chars_vocab.pkl'), 'rb') as f:
@@ -34,14 +35,14 @@ def noise_generator(string):
     return noised
 
 pairs = []
-for filename in ["msr_paraphrase_test.txt", "msr_paraphrase_train.txt"]:
+for filename in ["msr_paraphrase_test.txt"]:
     with codecs.open(os.path.join("data", "MRPC", filename), encoding="utf-8") as f:
         f.readline()
         for line in f:
             parts = line.strip().split("\t")
             pair = {"text_1": parts[3], "text_2": parts[4], "decision": float(parts[0])}
             pairs.append(pair)
-
+pairs = pairs[:len(pairs)//10]
 # pos = filter(lambda x: x["class"] == "1", pairs)
 # neg = filter(lambda x: x["class"] == "0", pairs)
 # min_len = min(len(pos), len(neg))
@@ -89,7 +90,7 @@ if "robust" in args.mode:
         pred.append(1 - cosine(v1, v2))
         if math.isnan(pred[-1]):
             pred[-1] = 0.5
-    with open("results3.txt", "at") as f_out:
+    with open("results_multilayer_stack_bilstm.txt", "at") as f_out:
         # f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
         f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
     # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)

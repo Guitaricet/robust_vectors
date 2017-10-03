@@ -1,12 +1,13 @@
+import tensorflow
 import tensorflow as tf
 
 from nn_utils import rnn_decoder
 from utils import letters2vec
 from nltk.tokenize import word_tokenize
 import numpy as np
-
-rnn_cell = tf.nn.rnn_cell
-seq2seq = tf.nn.seq2seq
+from tensorflow.python.ops import rnn_cell_impl
+rnn_cell = rnn_cell_impl
+rnn = tf.contrib.rnn
 
 
 class Model:
@@ -22,10 +23,16 @@ class Model:
             cell_fn = rnn_cell.GRUCell
         elif args.model == 'lstm':
             cell_fn = rnn_cell.BasicLSTMCell
+        elif args.model == 'biLSTM':
+            # Forward direction cell
+            cell_fn1 = rnn.BasicLSTMCell
+            # Backward direction cell
+            cell_fn2 = rnn.BasicLSTMCell
         else:
             raise Exception("model type not supported: {}".format(args.model))
 
-        cell = cell_fn(args.rnn_size, state_is_tuple=False)
+        # Attention this model is suitable for bidirectional LSTM (for test)
+        cell = cell_fn(args.rnn_size, state_is_tuple=False)# is not necesery arg
 
         self.cell = cell = rnn_cell.MultiRNNCell([cell] * args.num_layers, state_is_tuple=False)
 
@@ -33,18 +40,17 @@ class Model:
         self.initial_state = cell.zero_state(args.batch_size, tf.float32)
         self.change = tf.placeholder(tf.bool, [args.batch_size])
 
-        initial_state = tf.select(self.change, cell.zero_state(args.batch_size, tf.float32), self.initial_state)
+        initial_state = tf.where(self.change, cell.zero_state(args.batch_size, tf.float32), self.initial_state)
 
-        inputs = tf.split(1, args.seq_length, self.input_data)
+        inputs = tf.split(self.input_data, args.seq_length, 1)
         inputs = [tf.squeeze(input_, [1]) for input_ in inputs]
 
         with tf.variable_scope("input_linear"):
             linears = []
-            for i in xrange(len(inputs)):
+            for i in range(len(inputs)):
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
                 linears.append((rnn_cell._linear(inputs[i], args.rnn_size, bias=True)))
-
         outputs, last_state = rnn_decoder(linears, initial_state, cell,
                                           # loop_function=loop if infer else None,
                                           scope="rnnlm")
@@ -56,7 +62,7 @@ class Model:
 
         ones = tf.diag([1.] * args.batch_size)
         with tf.variable_scope("output_linear"):
-            for i in xrange(len(outputs)):
+            for i in range(len(outputs)):
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
                 output = rnn_cell._linear(outputs[i], args.w2v_size, bias=True)
@@ -67,11 +73,11 @@ class Model:
                 loss1 += tf.maximum(0.0, matrix)
                 final_vectors.append(output)
 
-        seq_slices = tf.reshape(tf.concat(1, final_vectors), [args.batch_size, args.seq_length, args.w2v_size])
-        seq_slices = tf.split(0, args.batch_size, seq_slices)
+        seq_slices = tf.reshape(tf.concat(final_vectors, 1), [args.batch_size, args.seq_length, args.w2v_size])
+        seq_slices = tf.split(seq_slices, args.batch_size, 0)
         seq_slices = [tf.squeeze(input_, [0]) for input_ in seq_slices]
         with tf.variable_scope("additional_loss"):
-            for i in xrange(len(seq_slices)):  # should be length of batch_size
+            for i in range(len(seq_slices)):  # should be length of batch_size
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
                 seq_context = tf.nn.l2_normalize(seq_slices[i], 1)
@@ -94,7 +100,6 @@ class Model:
 
     def sample(self, sess, vocab, prime=' '):
         state = self.cell.zero_state(1, tf.float32).eval()
-
         tokens = word_tokenize(prime)
         targets = []
         for token in tokens:

@@ -3,7 +3,10 @@ import tensorflow as tf
 import argparse
 import os
 from six.moves import cPickle
+
 from model import Model
+from biLstm_model import BiLSTM, StackedBiLstm
+
 from tqdm import tqdm
 import numpy as np
 
@@ -36,7 +39,7 @@ def sample(args):
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(sess, ckpt.model_checkpoint_path)
 
-            print model.sample(sess, vocab, args.prime)
+            print(model.sample(sess, vocab, args.prime))
 
 
 def sample_multi(save_dir, data):
@@ -44,7 +47,8 @@ def sample_multi(save_dir, data):
         saved_args = cPickle.load(f)
     with open(os.path.join(save_dir, 'chars_vocab.pkl'), 'rb') as f:
         _, vocab = cPickle.load(f)
-    model = Model(saved_args, True)
+    #ATTENTION
+    model = StackedBiLstm(saved_args, True)
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
     with tf.Session(config=config) as sess:
         tf.initialize_all_variables().run()

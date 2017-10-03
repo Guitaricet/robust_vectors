@@ -62,12 +62,13 @@ class TextLoader:
             self.preprocess(vocab_file, tensor_file, letter_vocab_file)
         else:
             print("loading preprocessed files")
+            print(vocab_file, tensor_file, letter_vocab_file)
             self.load_preprocessed(vocab_file, tensor_file, letter_vocab_file)
         self.create_batches()
         self.reset_batch_pointer()
 
     def preprocess(self, vocab_file, tensor_file, letter_vocab_file, ):
-        print "creating char vocab"
+        print("creating char vocab")
         sents = self.create_vocab(vocab_file)
 
         if self.vocab_size < 256:
@@ -83,9 +84,9 @@ class TextLoader:
             word_sents.append(word_s)
         count_pairs = sorted(uniq_tokens.items(), key=lambda x: -x[1])
         tokens, _ = zip(*count_pairs)
-        tokens_vocab = dict(zip(tokens, xrange(len(tokens))))
+        tokens_vocab = dict(zip(tokens, range(len(tokens))))
         letter_vectors = []
-        print "creating vocabs for w2v & letters"
+        print("creating vocabs for w2v & letters")
         for token in tqdm(tokens):
             letter_vector = letters2vec(token, self.vocab, dtype)
             letter_vectors.append(letter_vector)
@@ -160,12 +161,14 @@ class TextLoader:
 
     def create_vocab(self, vocab_file):
         # preparation of vocab
+        print('Vocabulary from: {}'.format(self.data_dir))
         sents = []
-        for f in tqdm(glob(os.path.join(self.data_dir, "*/*/*"))):
+        for f in tqdm(glob(os.path.join(self.data_dir, "*"))):
             if not f.endswith(".txt"):
                 continue
             with open(f) as f_in:
-                sents += sent_tokenize(f_in.read().decode("iso-8859-9"))
+                sents += sent_tokenize(f_in.read().encode().decode("iso-8859-9"))
+        print('sents{}'.format(sents))
         counter = Counter()
         for s in tqdm(sents):
             for t in s:

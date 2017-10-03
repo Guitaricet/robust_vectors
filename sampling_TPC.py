@@ -10,7 +10,7 @@ from random import random, choice
 from six.moves import cPickle
 import math
 from nltk.tokenize import word_tokenize
-import sbl2py.utils
+#import sbl2py.utils
 
 
 parser = argparse.ArgumentParser()
@@ -36,7 +36,7 @@ def noise_generator(string):
 
 pairs = []
 for filename in ["TuPC_test_set.txt", "TuPC_train_set.txt"]:
-    with codecs.open(os.path.join("data", "TuPC-2016", filename), encoding="iso-8859-9") as f:
+    with codecs.open(os.path.join("data", "42bin_haber", filename), encoding="iso-8859-9") as f:
         f.readline()
         for line in f:
             parts = line.strip().split("\t")
@@ -86,7 +86,7 @@ if "word2vec" in args.mode:
 
 if "fasttext" in args.mode:
     ft = {}
-    with codecs.open("data/TuPC-2016/word_vectors.txt", encoding="iso-8859-9") as f:
+    with codecs.open("data/42bin_haber/word_vectors.txt", encoding="iso-8859-9") as f:
         for line in f:
             parts = line.strip().split()
             ft[parts[0]] = np.array(map(float, parts[1:]))
@@ -116,17 +116,24 @@ if "robust" in args.mode:
         phrases.append(noise_generator(pair["text_1"]))
         phrases.append(noise_generator(pair["text_2"]))
     from sample import sample_multi
+    np.seterr(divide='ignore', invalid='ignore')
     results = np.vsplit(sample_multi(args.save_dir, phrases), len(phrases))
+
+    print("result:")
+    print(results)
     for i in range(0, len(results), 2):
         v1 = results[i]
         v2 = results[i + 1]
+        print(cosine(v1, v2))
         pred.append(1 - cosine(v1, v2))
         if math.isnan(pred[-1]):
             pred[-1] = 0.5
-    with open("results6.txt", "at") as f_out:
+    print('pred: {} '.format(pred))
+    with open("results_bilstm.txt", "at") as f_out:
         # f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
         f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
-    # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
 
-# print "Class ratio\t=\t%.2f" % (float(len(filter(None, true)))/len(true))
-# print "F1\t=\t%.2f" % f1_score(true, pred)
+    print("ROC\t\t=\t%.2f" % roc_auc_score(true, pred))
+
+#print("Class ratio\t=\t%.2f" % (float(len(filter(None, true)))/len(true)))
+# print("F1\t=\t%.2f" % f1_score(true, pred))

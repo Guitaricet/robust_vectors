@@ -10,6 +10,7 @@ from six.moves import cPickle
 
 from utils import TextLoader
 from model import Model
+from biLstm_model import BiLSTM, StackedBiLstm
 
 
 def main():
@@ -18,19 +19,19 @@ def main():
                         help='data directory containing input.txt')
     parser.add_argument('--save_dir', type=str, default='save',
                         help='directory to store checkpointed models')
-    parser.add_argument('--rnn_size', type=int, default=1024,
+    parser.add_argument('--rnn_size', type=int, default=256,
                         help='size of RNN hidden state')
-    parser.add_argument('--num_layers', type=int, default=3,
+    parser.add_argument('--num_layers', type=int, default=2,
                         help='number of layers in the RNN')
     parser.add_argument('--model', type=str, default='lstm',
-                        help='rnn, gru, or lstm')
-    parser.add_argument('--batch_size', type=int, default=512,
+                        help='rnn, biLSTM, gru, or lstm')
+    parser.add_argument('--batch_size', type=int, default=64,
                         help='minibatch size')
     parser.add_argument('--seq_length', type=int, default=8,
                         help='RNN sequence length')
-    parser.add_argument('--num_epochs', type=int, default=50,
+    parser.add_argument('--num_epochs', type=int, default=25,
                         help='number of epochs')
-    parser.add_argument('--save_every', type=int, default=1000,
+    parser.add_argument('--save_every', type=int, default=2000,
                         help='save frequency')
     parser.add_argument('--grad_clip', type=float, default=5.,
                         help='clip gradients at this value')
@@ -53,15 +54,18 @@ def main():
     parser.add_argument('--noise_level', type=float, default=0.05,
                         help='probability og typo')
     args = parser.parse_args()
+    print(args)
     train(args)
 
 
 def train(args):
     # check compatibility if training is continued from previously saved model
     if args.init_from is None:
+        print(args.init_from)
         data_loader = TextLoader(args)
+        ckpt = ''
     else:
-        # check if all necessary files exist 
+        # check if all necessary files exist
         assert os.path.isdir(args.init_from), " %s must be a a path" % args.init_from
         assert os.path.isfile(
             os.path.join(args.init_from, "config.pkl")), "config.pkl file does not exist in path %s" % args.init_from
@@ -97,8 +101,18 @@ def train(args):
     with open(os.path.join(args.save_dir, 'chars_vocab.pkl'), 'wb') as f:
         cPickle.dump((data_loader.chars, data_loader.vocab), f)
 
-    model = Model(args)
+    if args.model == 'biLSTM':
+        model = BiLSTM(args)
+        train_bidirectional_model(model, data_loader, args, ckpt)
+    elif args.model == 'stack-biLSTM':
+        model = StackedBiLstm(args)
+        train_bidirectional_model(model, data_loader, args, ckpt)
+    else:
+        model = Model(args)
+        train_one_forward_model(model, data_loader, args, ckpt)
 
+
+def train_one_forward_model(model, data_loader, args, ckpt):
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.3))
     with tf.Session(config=config) as sess:
         tf.initialize_all_variables().run()
@@ -115,6 +129,49 @@ def train(args):
                 start = time.time()
                 batch, change = data_loader.next_batch()
                 feed = {model.input_data: batch, model.change: change, model.initial_state: state}
+                if b % 113 != 0:
+                    train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
+                else:
+                    train_loss = sess.run([model.cost], feed)
+                    end = time.time()
+                    print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
+                          .format(e * data_loader.num_batches + b,
+                                  args.num_epochs * data_loader.num_batches,
+                                  e, train_loss[0], end - start))
+                if (e * data_loader.num_batches + b) % args.save_every == 0:
+                    checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
+                    saver.save(sess, checkpoint_path, global_step=e * data_loader.num_batches + b)
+                    print("model saved to {}".format(checkpoint_path))
+        checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
+        saver.save(sess, checkpoint_path, global_step=args.num_epochs * data_loader.num_batches)
+        print("final model saved to {}".format(checkpoint_path))
+
+
+def train_bidirectional_model(model, data_loader, args, ckpt):
+    # TODO replace in the separate file
+    config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.3))
+    with tf.Session(config=config) as sess:
+        tf.initialize_all_variables().run()
+        saver = tf.train.Saver(tf.all_variables())
+        # restore model
+        if args.init_from is not None:
+            saver.restore(sess, ckpt.model_checkpoint_path)
+
+        for e in range(args.num_epochs):
+            sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** e)))
+            data_loader.reset_batch_pointer()
+            model.initial_state_fw = tf.convert_to_tensor(model.initial_state_fw)
+            model.initial_state_bw = tf.convert_to_tensor(model.initial_state_bw)
+            state_fw = model.initial_state_fw.eval()
+            state_bw = model.initial_state_bw.eval()
+            for b in tqdm(range(data_loader.num_batches)):
+                start = time.time()
+                batch, change = data_loader.next_batch()
+                feed = {model.input_data: batch,
+                        model.change: change,
+                        model.initial_state_fw: state_fw,
+                        model.initial_state_bw: state_bw
+                        }
                 if b % 113 != 0:
                     train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
                 else:
