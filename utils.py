@@ -4,6 +4,7 @@ from glob import glob
 from nltk import sent_tokenize, word_tokenize
 from six.moves import cPickle
 import numpy as np
+from random import random, choice
 from tqdm import tqdm
 from collections import Counter
 import pickle
@@ -39,6 +40,16 @@ def letters2vec(word, vocab, dtype=np.uint8):
         update_vector(end_third, word[-3])
 
     return np.concatenate([first, second, third, middle, end_third, end_second, end_first])
+
+
+def noise_generator(string, noise_level, chars):
+    noised = ""
+    for c in string:
+        if random() > noise_level:
+            noised += c
+        if random() < noise_level:
+            noised += choice(chars)
+    return noised
 
 
 class TextLoader:
@@ -131,7 +142,7 @@ class TextLoader:
                 internal_index += 1
                 index += 1
                 change.append(0)
-
+        # change indicate about the end of sentences
         self.tensor = np.trim_zeros(temp_tensor, "b")
         self.num_batches = int(self.tensor.size / (self.batch_size * self.seq_length))
         self.tensor = self.tensor[:self.num_batches * self.batch_size * self.seq_length]

@@ -129,7 +129,7 @@ if "robust" in args.mode:
         if math.isnan(pred[-1]):
             pred[-1] = 0.5
     print('pred: {} '.format(pred))
-    with open("results_bilstm.txt", "at") as f_out:
+    with open("results_bilstm_haber.txt", "at") as f_out:
         # f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
         f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
 

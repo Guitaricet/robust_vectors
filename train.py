@@ -6,9 +6,15 @@ import tensorflow as tf
 import argparse
 import time
 import os
+import numpy as np
+import codecs
 from six.moves import cPickle
 
-from utils import TextLoader
+from scipy.spatial.distance import cosine
+from sklearn.metrics import roc_auc_score
+
+import math
+from utils import TextLoader, noise_generator
 from model import Model
 from biLstm_model import BiLSTM, StackedBiLstm
 
@@ -24,7 +30,7 @@ def main():
     parser.add_argument('--num_layers', type=int, default=2,
                         help='number of layers in the RNN')
     parser.add_argument('--model', type=str, default='lstm',
-                        help='rnn, biLSTM, gru, or lstm')
+                        help='rnn, stackBiLstm, biLSTM, gru, or lstm')
     parser.add_argument('--batch_size', type=int, default=64,
                         help='minibatch size')
     parser.add_argument('--seq_length', type=int, default=8,
@@ -56,6 +62,28 @@ def main():
     args = parser.parse_args()
     print(args)
     train(args)
+
+
+def get_validate_phrases(args):
+    pairs = []
+    phrases = []
+    for filename in ["msr_paraphrase_valid.txt"]:
+        with codecs.open(os.path.join("data", "MRPC", filename), encoding="utf-8") as f:
+            f.readline()
+            for line in f:
+                parts = line.strip().split("\t")
+                pair = {"text_1": parts[3], "text_2": parts[4], "decision": float(parts[0])}
+                pairs.append(pair)
+    pairs = pairs
+    true = [x["decision"] for x in pairs]
+    with open(os.path.join(args.save_dir, 'chars_vocab.pkl'), 'rb') as f:
+        chars, _ = cPickle.load(f)
+
+    for pair in pairs:
+        phrases.append(noise_generator(pair["text_1"], args.noise_level, chars))
+        phrases.append(noise_generator(pair["text_2"], args.noise_level, chars))
+
+    return phrases, true
 
 
 def train(args):
@@ -104,7 +132,7 @@ def train(args):
     if args.model == 'biLSTM':
         model = BiLSTM(args)
         train_bidirectional_model(model, data_loader, args, ckpt)
-    elif args.model == 'stack-biLSTM':
+    elif args.model == 'stackBiLstm':
         model = StackedBiLstm(args)
         train_bidirectional_model(model, data_loader, args, ckpt)
     else:
@@ -114,6 +142,9 @@ def train(args):
 
 def train_one_forward_model(model, data_loader, args, ckpt):
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.3))
+    with codecs.open(os.path.join(args.save_dir, 'chars_vocab.pkl'),'rb') as f:
+        saved_chars, saved_vocab = cPickle.load(f)
+
     with tf.Session(config=config) as sess:
         tf.initialize_all_variables().run()
         saver = tf.train.Saver(tf.all_variables())
@@ -121,8 +152,8 @@ def train_one_forward_model(model, data_loader, args, ckpt):
         if args.init_from is not None:
             saver.restore(sess, ckpt.model_checkpoint_path)
 
-        for e in range(args.num_epochs):
-            sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** e)))
+        for step in range(args.num_epochs):
+            sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** step)))
             data_loader.reset_batch_pointer()
             state = model.initial_state.eval()
             for b in tqdm(range(data_loader.num_batches)):
@@ -135,12 +166,32 @@ def train_one_forward_model(model, data_loader, args, ckpt):
                     train_loss = sess.run([model.cost], feed)
                     end = time.time()
                     print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
-                          .format(e * data_loader.num_batches + b,
+                          .format(step * data_loader.num_batches + b,
                                   args.num_epochs * data_loader.num_batches,
-                                  e, train_loss[0], end - start))
-                if (e * data_loader.num_batches + b) % args.save_every == 0:
+                                  step, train_loss[0], end - start))
+                if (step * data_loader.num_batches + b) % args.save_every == 0:
+                    print("Validation")
+                    valid_data, true_labels = get_validate_phrases(args)
+                    vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
+                    vectors = np.zeros((len(valid_data), vector.shape[0]))
+                    vectors[0, :] = vector
+                    for i in tqdm(range(1, len(valid_data))):
+                        vectors[i, :] = np.mean(model.valid_run(sess, saved_vocab, valid_data[i]), axis=0)
+                    valid_results = np.vsplit(vectors,len(valid_data))
+                    pred = []
+                    for i in range(0, len(valid_results), 2):
+                        v1 = valid_results[i]
+                        v2 = valid_results[i + 1]
+                        pred.append(1 - cosine(v1, v2))
+                        if math.isnan(pred[-1]):
+                            pred[-1] = 0.5
+                    print("="*30)
+                    print("RocAuc at step %d: %f" % (step, roc_auc_score(true_labels, pred)))
+                    print("="*30)
+
+                    # Save model and checkpoints
                     checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
-                    saver.save(sess, checkpoint_path, global_step=e * data_loader.num_batches + b)
+                    saver.save(sess, checkpoint_path, global_step=step * data_loader.num_batches + b)
                     print("model saved to {}".format(checkpoint_path))
         checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=args.num_epochs * data_loader.num_batches)
@@ -148,8 +199,10 @@ def train_one_forward_model(model, data_loader, args, ckpt):
 
 
 def train_bidirectional_model(model, data_loader, args, ckpt):
-    # TODO replace in the separate file
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.3))
+    with codecs.open(os.path.join(args.save_dir, 'chars_vocab.pkl'),'rb') as f:
+        saved_chars, saved_vocab = cPickle.load(f)
+
     with tf.Session(config=config) as sess:
         tf.initialize_all_variables().run()
         saver = tf.train.Saver(tf.all_variables())
@@ -164,7 +217,7 @@ def train_bidirectional_model(model, data_loader, args, ckpt):
             model.initial_state_bw = tf.convert_to_tensor(model.initial_state_bw)
             state_fw = model.initial_state_fw.eval()
             state_bw = model.initial_state_bw.eval()
-            for b in tqdm(range(data_loader.num_batches)):
+            for step in tqdm(range(data_loader.num_batches)):
                 start = time.time()
                 batch, change = data_loader.next_batch()
                 feed = {model.input_data: batch,
@@ -172,18 +225,41 @@ def train_bidirectional_model(model, data_loader, args, ckpt):
                         model.initial_state_fw: state_fw,
                         model.initial_state_bw: state_bw
                         }
-                if b % 113 != 0:
+                if step % 113 != 0:
                     train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
+                    state_fw = state[0]
+                    state_bw = state[1]
                 else:
                     train_loss = sess.run([model.cost], feed)
                     end = time.time()
                     print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
-                          .format(e * data_loader.num_batches + b,
+                          .format(e * data_loader.num_batches + step,
                                   args.num_epochs * data_loader.num_batches,
                                   e, train_loss[0], end - start))
-                if (e * data_loader.num_batches + b) % args.save_every == 0:
+                if (e * data_loader.num_batches + step) % args.save_every == 0:
+                    #Validation
+                    print("Validation")
+                    valid_data, true_labels = get_validate_phrases(args)
+                    vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
+                    vectors = np.zeros((len(valid_data), vector.shape[0]))
+                    vectors[0, :] = vector
+                    for i in tqdm(range(1, len(valid_data))):
+                        vectors[i, :] = np.mean(model.valid_run(sess, saved_vocab, valid_data[i]), axis=0)
+                    valid_results = np.vsplit(vectors,len(valid_data))
+                    pred = []
+                    for i in range(0, len(valid_results), 2):
+                        v1 = valid_results[i]
+                        v2 = valid_results[i + 1]
+                        pred.append(1 - cosine(v1, v2))
+                        if math.isnan(pred[-1]):
+                            pred[-1] = 0.5
+                    print("="*30)
+                    print("RocAuc at step %d: %f" % (step, roc_auc_score(true_labels, pred)))
+                    print("="*30)
+
+                    #Save model to save directory
                     checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
-                    saver.save(sess, checkpoint_path, global_step=e * data_loader.num_batches + b)
+                    saver.save(sess, checkpoint_path, global_step=e * data_loader.num_batches + step)
                     print("model saved to {}".format(checkpoint_path))
         checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=args.num_epochs * data_loader.num_batches)

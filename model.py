@@ -47,13 +47,21 @@ class Model:
 
         with tf.variable_scope("input_linear"):
             linears = []
-            for i in range(len(inputs)):
+            for i, _input in enumerate(inputs):
                 if i > 0:
-                    tf.get_variable_scope().reuse_variables()
-                linears.append((rnn_cell._linear(inputs[i], args.rnn_size, bias=True)))
-        outputs, last_state = rnn_decoder(linears, initial_state, cell,
-                                          # loop_function=loop if infer else None,
-                                          scope="rnnlm")
+                    tf.get_variable_scope()
+                full_vector = tf.contrib.layers.fully_connected(_input, args.rnn_size,
+                                                                activation_fn=None)
+                linears.append(full_vector)
+        fixed_input = tf.stack(linears, axis=1)
+        fixed_input = tf.reshape(fixed_input, [self.args.batch_size, self.args.seq_length, -1])
+
+        outputs, last_state = tf.nn.dynamic_rnn(cell, fixed_input,
+                                               initial_state=initial_state,
+                                               scope="rnnlm")
+        # outputs, last_state = rnn_decoder(linears, initial_state, cell,
+        #                                   # loop_function=loop if infer else None,
+        #                                   scope="rnnlm")
         self.final_state = last_state
 
         loss1 = tf.constant(0.0)
@@ -61,11 +69,14 @@ class Model:
         final_vectors = []
 
         ones = tf.diag([1.] * args.batch_size)
+
+        outputs = tf.unstack(outputs, axis = 1)
         with tf.variable_scope("output_linear"):
             for i in range(len(outputs)):
                 if i > 0:
-                    tf.get_variable_scope().reuse_variables()
-                output = rnn_cell._linear(outputs[i], args.w2v_size, bias=True)
+                    tf.get_variable_scope()
+                output = tf.contrib.layers.fully_connected(outputs[i], args.w2v_size,
+                                                           activation_fn=None)
                 output = tf.nn.l2_normalize(output, 1)
                 output = tf.nn.dropout(output, args.dropout_keep_prob)
                 # negative sampling
@@ -97,6 +108,58 @@ class Model:
                                           args.grad_clip)
         optimizer = tf.train.AdamOptimizer(self.lr)
         self.train_op = optimizer.apply_gradients(zip(grads, tvars))
+        # Validation
+        self.valid_data = tf.placeholder(tf.float32, [1, 1, args.letter_size])
+        self.valid_initial_state = cell.zero_state(1, tf.float32)
+
+        valid_initial_state = self.valid_initial_state
+
+        valid_inputs = tf.split(self.valid_data, 1, 1)
+        valid_inputs = [tf.squeeze(input_, [1]) for input_ in valid_inputs]
+
+        with tf.variable_scope("input_valid"):
+            valid_fixed_input = []
+            for i, _input in enumerate(valid_inputs):
+                if i > 0:
+                    tf.get_variable_scope()
+                full_vector = tf.contrib.layers.fully_connected(_input, args.rnn_size,
+                                                                activation_fn=None)
+                valid_fixed_input.append(full_vector)
+
+        valid_fixed_input = tf.stack(valid_fixed_input, axis=1)
+        valid_fixed_input = tf.reshape(valid_fixed_input, [1, 1, args.rnn_size])
+
+        valid_outputs, valid_last_state = tf.nn.dynamic_rnn(cell, valid_fixed_input,
+                                               initial_state=valid_initial_state,
+                                               scope="lst_valid")
+
+        self.valid_state = valid_last_state
+
+        valid_vectors = []
+
+        valid_outputs = tf.unstack(valid_outputs, axis = 1)
+        with tf.variable_scope("output_valid"):
+            for i in range(len(valid_outputs)):
+                if i > 0:
+                    tf.get_variable_scope()
+                output = tf.contrib.layers.fully_connected(valid_outputs[i], args.w2v_size,
+                                                           activation_fn=None)
+                output = tf.nn.l2_normalize(output, 1)
+                valid_vectors.append(output)
+        self.valid_vector = valid_vectors[-1]
+
+    def valid_run(self, sess, vocab, prime):
+        state = self.cell.zero_state(1, tf.float32).eval()
+        tokens = word_tokenize(prime)
+        targets = []
+        for token in tokens:
+            x = letters2vec(token, vocab).reshape((1, 1, -1))
+            feed = {self.valid_data: x,
+                    self.valid_initial_state: state,
+                    }
+            [state, target] = sess.run([self.valid_state, self.valid_vector], feed)
+            targets.append(np.squeeze(target))
+        return targets
 
     def sample(self, sess, vocab, prime=' '):
         state = self.cell.zero_state(1, tf.float32).eval()
@@ -105,7 +168,10 @@ class Model:
         for token in tokens:
             x = letters2vec(token, vocab).reshape((1, 1, -1))
 
-            feed = {self.input_data: x, self.initial_state: state, self.change: np.zeros((1,))}
+            feed = {self.input_data: x,
+                    self.initial_state: state,
+                    self.change: np.zeros((1,))
+                    }
             [state, target] = sess.run([self.final_state, self.target], feed)
             targets.append(np.squeeze(target))
 

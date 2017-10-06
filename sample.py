@@ -59,9 +59,8 @@ def sample_multi(save_dir, data):
             vector = np.mean(model.sample(sess, vocab, data[0]), axis=0)
             vectors = np.zeros((len(data), vector.shape[0]))
             vectors[0, :] = vector
-            for i in tqdm(range(len(data[1:]))):
+            for i in tqdm(range(1, len(data[1:]))):
                 vectors[i, :] = np.mean(model.sample(sess, vocab, data[i]), axis=0)
-
     return vectors
 
 if __name__ == '__main__':
