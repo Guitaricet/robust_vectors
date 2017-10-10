@@ -85,10 +85,12 @@ if "robust" in args.mode:
     for i in range(0, len(results), 2):
         v1 = results[i]
         v2 = results[i + 1]
+        if (v1 == np.zeros_like(v1)).all() or (v2 == np.zeros_like(v2)).all():
+            print(i)
         pred.append(1 - cosine(v1, v2))
         if math.isnan(pred[-1]):
             pred[-1] = 0.5
-    with open("results_multilayer_stack_bilstm.txt", "at") as f_out:
+    with open("results_cnn_3layer.txt", "at") as f_out:
         # f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
         f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
     # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)

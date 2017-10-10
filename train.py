@@ -17,6 +17,7 @@ import math
 from utils import TextLoader, noise_generator
 from model import Model
 from biLstm_model import BiLSTM, StackedBiLstm
+from conv_model import  ConvModel
 
 
 def main():
@@ -104,7 +105,7 @@ def train(args):
         assert ckpt.model_checkpoint_path, "No model path found in checkpoint"
 
         # open old config and check if models are compatible
-        with open(os.path.join(args.init_from, 'config.pkl')) as f:
+        with codecs.open(os.path.join(args.init_from, 'config.pkl'),'rb') as f:
             saved_model_args = cPickle.load(f)
         need_be_same = ["model", "rnn_size", "num_layers", "seq_length"]
         for checkme in need_be_same:
@@ -112,7 +113,7 @@ def train(args):
                 checkme], "Command line argument and saved model disagree on '%s' " % checkme
 
         # open saved vocab/dict and check if vocabs/dicts are compatible
-        with open(os.path.join(args.init_from, 'chars_vocab.pkl')) as f:
+        with codecs.open(os.path.join(args.init_from, 'chars_vocab.pkl'), 'rb') as f:
             saved_chars, saved_vocab = cPickle.load(f)
 
         data_loader = TextLoader(args, chars=saved_chars, vocab=saved_vocab)
@@ -135,6 +136,9 @@ def train(args):
     elif args.model == 'stackBiLstm':
         model = StackedBiLstm(args)
         train_bidirectional_model(model, data_loader, args, ckpt)
+    elif args.model == 'cnn':
+        model = ConvModel(args)
+        train_cnn_model(model, data_loader, args, ckpt)
     else:
         model = Model(args)
         train_one_forward_model(model, data_loader, args, ckpt)
@@ -265,6 +269,43 @@ def train_bidirectional_model(model, data_loader, args, ckpt):
         saver.save(sess, checkpoint_path, global_step=args.num_epochs * data_loader.num_batches)
         print("final model saved to {}".format(checkpoint_path))
 
+
+def train_cnn_model(model, data_loader, args, ckpt):
+    config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.3))
+
+    with tf.Session(config=config) as sess:
+        tf.initialize_all_variables().run()
+        saver = tf.train.Saver(tf.all_variables())
+        # restore model
+        if args.init_from is not None:
+            saver.restore(sess, ckpt.model_checkpoint_path)
+
+        for step in range(args.num_epochs):
+            sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** step)))
+            data_loader.reset_batch_pointer()
+            for b in tqdm(range(data_loader.num_batches)):
+                start = time.time()
+                batch, change = data_loader.next_batch()
+                feed = {model.input_data: batch}
+                if b % 113 != 0:
+                    train_loss, _ = sess.run([model.cost, model.train_op], feed)
+                else:
+                    train_loss = sess.run([model.cost], feed)
+                    end = time.time()
+                    print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
+                          .format(step * data_loader.num_batches + b,
+                                  args.num_epochs * data_loader.num_batches,
+                                  step, train_loss[0], end - start))
+                if (step * data_loader.num_batches + b) % args.save_every == 0:
+                    # Save model and checkpoints
+                    checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
+                    saver.save(sess, checkpoint_path, global_step=step * data_loader.num_batches + b)
+                    print("model saved to {}".format(checkpoint_path))
+
+
+        checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
+        saver.save(sess, checkpoint_path, global_step=args.num_epochs * data_loader.num_batches)
+        print("final model saved to {}".format(checkpoint_path))
 
 if __name__ == '__main__':
     main()

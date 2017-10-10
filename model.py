@@ -69,7 +69,7 @@ class Model:
         final_vectors = []
 
         ones = tf.diag([1.] * args.batch_size)
-
+        print(outputs.shape)
         outputs = tf.unstack(outputs, axis = 1)
         with tf.variable_scope("output_linear"):
             for i in range(len(outputs)):
@@ -77,13 +77,16 @@ class Model:
                     tf.get_variable_scope()
                 output = tf.contrib.layers.fully_connected(outputs[i], args.w2v_size,
                                                            activation_fn=None)
+
+                print(output.shape)
                 output = tf.nn.l2_normalize(output, 1)
                 output = tf.nn.dropout(output, args.dropout_keep_prob)
                 # negative sampling
                 matrix = tf.matmul(output, output, transpose_b=True) - ones
                 loss1 += tf.maximum(0.0, matrix)
                 final_vectors.append(output)
-
+            print(len(final_vectors))
+        exit()
         seq_slices = tf.reshape(tf.concat(final_vectors, 1), [args.batch_size, args.seq_length, args.w2v_size])
         seq_slices = tf.split(seq_slices, args.batch_size, 0)
         seq_slices = [tf.squeeze(input_, [0]) for input_ in seq_slices]

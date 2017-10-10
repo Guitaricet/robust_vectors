@@ -6,7 +6,7 @@ from six.moves import cPickle
 
 from model import Model
 from biLstm_model import BiLSTM, StackedBiLstm
-
+from conv_model import ConvModel
 from tqdm import tqdm
 import numpy as np
 
@@ -47,8 +47,8 @@ def sample_multi(save_dir, data):
         saved_args = cPickle.load(f)
     with open(os.path.join(save_dir, 'chars_vocab.pkl'), 'rb') as f:
         _, vocab = cPickle.load(f)
-    #ATTENTION
-    model = StackedBiLstm(saved_args, True)
+    #ATTENTION # TODO understand what model we want to choose.
+    model = ConvModel(saved_args, True)
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
     with tf.Session(config=config) as sess:
         tf.initialize_all_variables().run()
@@ -59,8 +59,13 @@ def sample_multi(save_dir, data):
             vector = np.mean(model.sample(sess, vocab, data[0]), axis=0)
             vectors = np.zeros((len(data), vector.shape[0]))
             vectors[0, :] = vector
-            for i in tqdm(range(1, len(data[1:]))):
+            for i in tqdm(range(1, len(data))):
                 vectors[i, :] = np.mean(model.sample(sess, vocab, data[i]), axis=0)
+                if(vectors[i, :] == np.zeros_like(vector)).all():
+                    print(model.sample(sess, vocab, data[i]))
+                    print(data[i])
+                    print(len(data[i]))
+                    exit()
     return vectors
 
 if __name__ == '__main__':
