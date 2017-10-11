@@ -1,4 +1,3 @@
-import tensorflow
 import tensorflow as tf
 
 from nn_utils import rnn_decoder

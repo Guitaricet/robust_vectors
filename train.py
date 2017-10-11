@@ -8,6 +8,7 @@ import time
 import os
 import numpy as np
 import codecs
+import logging
 from six.moves import cPickle
 
 from scipy.spatial.distance import cosine
@@ -17,7 +18,10 @@ import math
 from utils import TextLoader, noise_generator
 from model import Model
 from biLstm_model import BiLSTM, StackedBiLstm
-from conv_model import  ConvModel
+from conv_model import  Conv3LayerModel
+
+logging.basicConfig(filename='validation.log', filemode='w', level=logging.INFO)
+logging.getLogger("tensorflow").setLevel(logging.WARNING) # suppress tf use info logging
 
 
 def main():
@@ -31,7 +35,7 @@ def main():
     parser.add_argument('--num_layers', type=int, default=2,
                         help='number of layers in the RNN')
     parser.add_argument('--model', type=str, default='lstm',
-                        help='rnn, stackBiLstm, biLSTM, gru, or lstm')
+                        help='cnn, rnn, stackBiLstm, biLSTM, gru, or lstm')
     parser.add_argument('--batch_size', type=int, default=64,
                         help='minibatch size')
     parser.add_argument('--seq_length', type=int, default=8,
@@ -137,7 +141,7 @@ def train(args):
         model = StackedBiLstm(args)
         train_bidirectional_model(model, data_loader, args, ckpt)
     elif args.model == 'cnn':
-        model = ConvModel(args)
+        model = Conv3LayerModel(args)
         train_cnn_model(model, data_loader, args, ckpt)
     else:
         model = Model(args)
@@ -150,8 +154,8 @@ def train_one_forward_model(model, data_loader, args, ckpt):
         saved_chars, saved_vocab = cPickle.load(f)
 
     with tf.Session(config=config) as sess:
-        tf.initialize_all_variables().run()
-        saver = tf.train.Saver(tf.all_variables())
+        tf.global_variables_initializer().run()
+        saver = tf.train.Saver(tf.global_variables())
         # restore model
         if args.init_from is not None:
             saver.restore(sess, ckpt.model_checkpoint_path)
@@ -208,8 +212,8 @@ def train_bidirectional_model(model, data_loader, args, ckpt):
         saved_chars, saved_vocab = cPickle.load(f)
 
     with tf.Session(config=config) as sess:
-        tf.initialize_all_variables().run()
-        saver = tf.train.Saver(tf.all_variables())
+        tf.global_variables_initializer().run()
+        saver = tf.train.Saver(tf.global_variables())
         # restore model
         if args.init_from is not None:
             saver.restore(sess, ckpt.model_checkpoint_path)
@@ -257,11 +261,12 @@ def train_bidirectional_model(model, data_loader, args, ckpt):
                         pred.append(1 - cosine(v1, v2))
                         if math.isnan(pred[-1]):
                             pred[-1] = 0.5
+                    roc_auc_validation_score = roc_auc_score(true_labels, pred)
                     print("="*30)
-                    print("RocAuc at step %d: %f" % (step, roc_auc_score(true_labels, pred)))
+                    print("RocAuc at step %d: %f" % (step, roc_auc_validation_score))
                     print("="*30)
-
-                    #Save model to save directory
+                    logging.info("RocAuc at step %d and epoch %d : %f"%( step, e, roc_auc_validation_score))
+                    # Save model to save directory
                     checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
                     saver.save(sess, checkpoint_path, global_step=e * data_loader.num_batches + step)
                     print("model saved to {}".format(checkpoint_path))
@@ -272,10 +277,12 @@ def train_bidirectional_model(model, data_loader, args, ckpt):
 
 def train_cnn_model(model, data_loader, args, ckpt):
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.3))
+    with codecs.open(os.path.join(args.save_dir, 'chars_vocab.pkl'),'rb') as f:
+        saved_chars, saved_vocab = cPickle.load(f)
 
     with tf.Session(config=config) as sess:
-        tf.initialize_all_variables().run()
-        saver = tf.train.Saver(tf.all_variables())
+        tf.global_variables_initializer().run()
+        saver = tf.train.Saver(tf.global_variables())
         # restore model
         if args.init_from is not None:
             saver.restore(sess, ckpt.model_checkpoint_path)
@@ -283,23 +290,43 @@ def train_cnn_model(model, data_loader, args, ckpt):
         for step in range(args.num_epochs):
             sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** step)))
             data_loader.reset_batch_pointer()
-            for b in tqdm(range(data_loader.num_batches)):
+            for epoch in tqdm(range(data_loader.num_batches)):
                 start = time.time()
                 batch, change = data_loader.next_batch()
                 feed = {model.input_data: batch}
-                if b % 113 != 0:
+                if epoch % 113 != 0:
                     train_loss, _ = sess.run([model.cost, model.train_op], feed)
                 else:
                     train_loss = sess.run([model.cost], feed)
                     end = time.time()
                     print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
-                          .format(step * data_loader.num_batches + b,
+                          .format(step * data_loader.num_batches + epoch,
                                   args.num_epochs * data_loader.num_batches,
                                   step, train_loss[0], end - start))
-                if (step * data_loader.num_batches + b) % args.save_every == 0:
+                if (step * data_loader.num_batches + epoch) % args.save_every == 0:
+                    print("Validation")
+                    valid_data, true_labels = get_validate_phrases(args)
+                    vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
+                    vectors = np.zeros((len(valid_data), vector.shape[0]))
+                    vectors[0, :] = vector
+                    for i in tqdm(range(1, len(valid_data))):
+                        vectors[i, :] = np.mean(model.valid_run(sess, saved_vocab, valid_data[i]), axis=0)
+                    valid_results = np.vsplit(vectors,len(valid_data))
+                    pred = []
+                    for i in range(0, len(valid_results), 2):
+                        v1 = valid_results[i]
+                        v2 = valid_results[i + 1]
+                        pred.append(1 - cosine(v1, v2))
+                        if math.isnan(pred[-1]):
+                            pred[-1] = 0.5
+                    roc_auc_validation_score = roc_auc_score(true_labels, pred)
+                    print("="*30)
+                    print("RocAuc at step %d: %f" % (step, roc_auc_validation_score))
+                    print("="*30)
+                    logging.info("RocAuc at step %d and epoch %d : %f"%( step, epoch, roc_auc_validation_score))
                     # Save model and checkpoints
                     checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
-                    saver.save(sess, checkpoint_path, global_step=step * data_loader.num_batches + b)
+                    saver.save(sess, checkpoint_path, global_step=step * data_loader.num_batches + epoch)
                     print("model saved to {}".format(checkpoint_path))
 
 
