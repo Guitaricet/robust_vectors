@@ -18,7 +18,7 @@ import math
 from utils import TextLoader, noise_generator
 from model import Model
 from biLstm_model import BiLSTM, StackedBiLstm
-from conv_model import  Conv3LayerModel
+from conv_model import  Conv3LayerModel, Conv6LayerModel
 
 logging.basicConfig(filename='validation.log', filemode='w', level=logging.INFO)
 logging.getLogger("tensorflow").setLevel(logging.WARNING) # suppress tf use info logging
@@ -140,8 +140,11 @@ def train(args):
     elif args.model == 'stackBiLstm':
         model = StackedBiLstm(args)
         train_bidirectional_model(model, data_loader, args, ckpt)
-    elif args.model == 'cnn':
+    elif args.model == 'cnn3layers':
         model = Conv3LayerModel(args)
+        train_cnn_model(model, data_loader, args, ckpt)
+    elif args.model == 'cnn6layers':
+        model = Conv6LayerModel(args)
         train_cnn_model(model, data_loader, args, ckpt)
     else:
         model = Model(args)
@@ -287,23 +290,23 @@ def train_cnn_model(model, data_loader, args, ckpt):
         if args.init_from is not None:
             saver.restore(sess, ckpt.model_checkpoint_path)
 
-        for step in range(args.num_epochs):
-            sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** step)))
+        for epoch in range(args.num_epochs):
+            sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** epoch)))
             data_loader.reset_batch_pointer()
-            for epoch in tqdm(range(data_loader.num_batches)):
+            for _step in tqdm(range(data_loader.num_batches)):
                 start = time.time()
                 batch, change = data_loader.next_batch()
                 feed = {model.input_data: batch}
-                if epoch % 113 != 0:
+                if _step % 113 != 0:
                     train_loss, _ = sess.run([model.cost, model.train_op], feed)
                 else:
                     train_loss = sess.run([model.cost], feed)
                     end = time.time()
-                    print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
-                          .format(step * data_loader.num_batches + epoch,
+                    print("{}/{} (_step {}), train_loss = {:.3f}, time/batch = {:.3f}" \
+                          .format(epoch * data_loader.num_batches + _step,
                                   args.num_epochs * data_loader.num_batches,
-                                  step, train_loss[0], end - start))
-                if (step * data_loader.num_batches + epoch) % args.save_every == 0:
+                                  epoch, train_loss[0], end - start))
+                #if (epoch * data_loader.num_batches + _step) % args.save_every == 0:
                     print("Validation")
                     valid_data, true_labels = get_validate_phrases(args)
                     vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
@@ -318,15 +321,16 @@ def train_cnn_model(model, data_loader, args, ckpt):
                         v2 = valid_results[i + 1]
                         pred.append(1 - cosine(v1, v2))
                         if math.isnan(pred[-1]):
+                            logging.info("prediction contains nan")
                             pred[-1] = 0.5
                     roc_auc_validation_score = roc_auc_score(true_labels, pred)
                     print("="*30)
-                    print("RocAuc at step %d: %f" % (step, roc_auc_validation_score))
+                    print("RocAuc at epoch %d: %f" % (epoch, roc_auc_validation_score))
                     print("="*30)
-                    logging.info("RocAuc at step %d and epoch %d : %f"%( step, epoch, roc_auc_validation_score))
+                    logging.info("RocAuc at epoch %d and _step %d : %f"%(epoch, _step, roc_auc_validation_score))
                     # Save model and checkpoints
                     checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
-                    saver.save(sess, checkpoint_path, global_step=step * data_loader.num_batches + epoch)
+                    saver.save(sess, checkpoint_path, global_step=epoch * data_loader.num_batches + _step)
                     print("model saved to {}".format(checkpoint_path))
 
 
