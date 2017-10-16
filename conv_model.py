@@ -33,7 +33,7 @@ class Conv3LayerModel:
         fixed_input = tf.stack(fixed_size_vectors, axis=1)
         fixed_input = tf.reshape(fixed_input, [self.args.batch_size,1, self.args.seq_length, -1])
         # Layer 1
-        with tf.variable_scope("cnn_1"):  # TODO get back to conv1d
+        with tf.variable_scope("cnn_1"):
             filter_shape = [1, filters_size[0], 256, 512]
             W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.05), name="W")
             b = tf.Variable(tf.constant(0.1, shape=[512]), name="b")
@@ -72,6 +72,7 @@ class Conv3LayerModel:
             h3 = tf.nn.relu(tf.nn.bias_add(conv3, b), name="relu3")
 
         outputs = tf.squeeze(h3)
+        print("output shape {}".format(outputs.shape))
 
         loss1 = tf.constant(0.0)
         loss2 = tf.constant(0.0)
@@ -256,7 +257,7 @@ class Conv6LayerModel:
         print(args.seq_length)
         if infer:
             args.batch_size = 1
-            args.seq_length = 12 #TODO
+            args.seq_length = 10 #TODO
         # Apropiate sequnce length
         self.input_data = tf.placeholder(tf.float32, [args.batch_size, args.seq_length, args.letter_size])
 
@@ -276,7 +277,7 @@ class Conv6LayerModel:
                 fixed_size_vectors.append(full_vector)
 
         fixed_input = tf.stack(fixed_size_vectors, axis=1)
-        fixed_input = tf.reshape(fixed_input, [self.args.batch_size,-1, self.args.seq_length])
+        fixed_input = tf.reshape(fixed_input, [self.args.batch_size, -1, self.args.seq_length])
         fixed_input = tf.unstack(fixed_input, axis=0)
         with tf.variable_scope("active_linear"):
             fixed_size_vectors = []
@@ -332,25 +333,36 @@ class Conv6LayerModel:
             conv4 = tf.nn.conv2d(h3, W, strides=[1, 1, 1, 1], padding="VALID", name="conv4")
             print(conv4.shape)
             h4 = tf.nn.relu(tf.nn.bias_add(conv4, b), name="relu4")
+            pooled = tf.nn.max_pool(
+                h4,
+                ksize=[1, 1, 3, 1],
+                strides=[1, 1, 1, 1],
+                padding='VALID',
+                name="pool4")
 
         with tf.name_scope("cnn_5"):
             filter_shape = [1, filters_size[4], 512, 300]
             W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.05), name="W")
             b = tf.Variable(tf.constant(0.1, shape=[300]), name="b")
-            conv5 = tf.nn.conv2d(h4, W, strides=[1, 1, 1, 1], padding="VALID", name="conv5")
+            conv5 = tf.nn.conv2d(pooled, W, strides=[1, 1, 1, 1], padding="VALID", name="conv5")
             print(conv5.shape)
             h5 = tf.nn.relu(tf.nn.bias_add(conv5, b), name="relu5")
-
+            pooled = tf.nn.max_pool(
+                h5,
+                ksize=[1, 1, 2, 1],
+                strides=[1, 1, 1, 1],
+                padding='VALID',
+                name="pool5")
 
         with tf.name_scope("cnn_6"):
-            filter_shape = [1, filters_size[5], 300, 8]
+            filter_shape = [1, filters_size[5], 300, 10*args.seq_length]
             W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.05), name="W")
-            b = tf.Variable(tf.constant(0.1, shape=[8]), name="b")
-            conv6 = tf.nn.conv2d(h5, W, strides=[1, 1, 1, 1], padding="VALID", name="conv6")
+            b = tf.Variable(tf.constant(0.1, shape=[10*args.seq_length]), name="b")
+            conv6 = tf.nn.conv2d(pooled, W, strides=[1, 1, 1, 1], padding="VALID", name="conv6")
             print(conv6.shape)
             h6 = tf.nn.relu(tf.nn.bias_add(conv6, b), name="relu6")
-
         outputs = tf.squeeze(h6)
+        print("output shape {}".format(outputs.shape))
 
         loss1 = tf.constant(0.0)
         loss2 = tf.constant(0.0)
@@ -475,21 +487,32 @@ class Conv6LayerModel:
             conv4 = tf.nn.conv2d(h3, W, strides=[1, 1, 1, 1], padding="VALID", name="conv4valid")
             print(conv4.shape)
             h4 = tf.nn.relu(tf.nn.bias_add(conv4, b), name="relu4")
+            pooled = tf.nn.max_pool(
+                h4,
+                ksize=[1, 1, 3, 1],
+                strides=[1, 1, 1, 1],
+                padding='VALID',
+                name="valid_pool4")
 
         with tf.name_scope("valid_cnn_5"):
             filter_shape = [1, filters_size[4], 512, 300]
             W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.05), name="W")
             b = tf.Variable(tf.constant(0.1, shape=[300]), name="b")
-            conv5 = tf.nn.conv2d(h4, W, strides=[1, 1, 1, 1], padding="VALID", name="conv5valid")
+            conv5 = tf.nn.conv2d(pooled, W, strides=[1, 1, 1, 1], padding="VALID", name="conv5valid")
             print(conv5.shape)
             h5 = tf.nn.relu(tf.nn.bias_add(conv5, b), name="relu5")
-
+            pooled = tf.nn.max_pool(
+                h5,
+                ksize=[1, 1, 2, 1],
+                strides=[1, 1, 1, 1],
+                padding='VALID',
+                name="valid_pool5")
 
         with tf.name_scope("valid_cnn_6"):
-            filter_shape = [1, filters_size[5], 300, 8]
+            filter_shape = [1, filters_size[5], 300, 10*self.args.seq_length]
             W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.05), name="W")
-            b = tf.Variable(tf.constant(0.1, shape=[8]), name="b")
-            conv6 = tf.nn.conv2d(h5, W, strides=[1, 1, 1, 1], padding="VALID", name="conv6valid")
+            b = tf.Variable(tf.constant(0.1, shape=[10*self.args.seq_length]), name="b")
+            conv6 = tf.nn.conv2d(pooled, W, strides=[1, 1, 1, 1], padding="VALID", name="conv6valid")
             print(conv6.shape)
             h6 = tf.nn.relu(tf.nn.bias_add(conv6, b), name="relu6")
 

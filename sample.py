@@ -6,7 +6,7 @@ from six.moves import cPickle
 
 from model import Model
 from biLstm_model import BiLSTM, StackedBiLstm
-from conv_model import Conv3LayerModel
+from conv_model import Conv3LayerModel, Conv6LayerModel
 from tqdm import tqdm
 import numpy as np
 
@@ -48,7 +48,7 @@ def sample_multi(save_dir, data):
     with open(os.path.join(save_dir, 'chars_vocab.pkl'), 'rb') as f:
         _, vocab = cPickle.load(f)
     #ATTENTION # TODO understand what model we want to choose.
-    model = Conv3LayerModel(saved_args, True)
+    model = Conv6LayerModel(saved_args, True)
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
     with tf.Session(config=config) as sess:
         tf.initialize_all_variables().run()

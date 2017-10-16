@@ -302,11 +302,13 @@ def train_cnn_model(model, data_loader, args, ckpt):
                 else:
                     train_loss = sess.run([model.cost], feed)
                     end = time.time()
-                    print("{}/{} (_step {}), train_loss = {:.3f}, time/batch = {:.3f}" \
+                    print("{}/{} (epoch{}), train_loss = {:.3f}, time/batch = {:.3f}" \
                           .format(epoch * data_loader.num_batches + _step,
                                   args.num_epochs * data_loader.num_batches,
                                   epoch, train_loss[0], end - start))
-                #if (epoch * data_loader.num_batches + _step) % args.save_every == 0:
+                if (epoch * data_loader.num_batches + _step) % args.save_every == 0:
+                    if _step == 0:
+                        continue
                     print("Validation")
                     valid_data, true_labels = get_validate_phrases(args)
                     vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
@@ -327,7 +329,7 @@ def train_cnn_model(model, data_loader, args, ckpt):
                     print("="*30)
                     print("RocAuc at epoch %d: %f" % (epoch, roc_auc_validation_score))
                     print("="*30)
-                    logging.info("RocAuc at epoch %d and _step %d : %f"%(epoch, _step, roc_auc_validation_score))
+                    logging.info("RocAuc at epoch %d and step %d : %f"%(epoch, _step, roc_auc_validation_score))
                     # Save model and checkpoints
                     checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
                     saver.save(sess, checkpoint_path, global_step=epoch * data_loader.num_batches + _step)
