@@ -257,7 +257,7 @@ class StackedBiLstm:
 
         inputs = tf.split(self.input_data, args.seq_length, 1)
         inputs = [tf.squeeze(input_, [1]) for input_ in inputs]
-
+        print(inputs)
         with tf.variable_scope("input_linear"):
             fixed_size_vectors = []  # tf.Variable(tf.float32, [args.seq_length, args.rnn_size,args.letter_size])
             for i, _input in enumerate(inputs):

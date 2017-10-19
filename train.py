@@ -15,10 +15,12 @@ from scipy.spatial.distance import cosine
 from sklearn.metrics import roc_auc_score
 
 import math
+
+from cnn_lstm_model import ConvLSTMModel
 from utils import TextLoader, noise_generator
 from model import Model
 from biLstm_model import BiLSTM, StackedBiLstm
-from conv_model import  Conv3LayerModel, Conv6LayerModel
+from conv_model import Conv3LayerModel, Conv6LayerModel, Conv1d3Layer
 
 logging.basicConfig(filename='validation.log', filemode='w', level=logging.INFO)
 logging.getLogger("tensorflow").setLevel(logging.WARNING) # suppress tf use info logging
@@ -93,6 +95,7 @@ def get_validate_phrases(args):
 
 def train(args):
     # check compatibility if training is continued from previously saved model
+
     if args.init_from is None:
         print(args.init_from)
         data_loader = TextLoader(args)
@@ -143,9 +146,15 @@ def train(args):
     elif args.model == 'cnn3layers':
         model = Conv3LayerModel(args)
         train_cnn_model(model, data_loader, args, ckpt)
+    elif args.model == 'conv1d':
+        model = Conv1d3Layer(args)
+        train_cnn_model(model, data_loader, args, ckpt)
     elif args.model == 'cnn6layers':
         model = Conv6LayerModel(args)
         train_cnn_model(model, data_loader, args, ckpt)
+    elif args.model == 'cnn_lstm':
+        model = ConvLSTMModel(args)
+        train_one_forward_model(model, data_loader, args, ckpt)
     else:
         model = Model(args)
         train_one_forward_model(model, data_loader, args, ckpt)
@@ -248,7 +257,13 @@ def train_bidirectional_model(model, data_loader, args, ckpt):
                                   args.num_epochs * data_loader.num_batches,
                                   e, train_loss[0], end - start))
                 if (e * data_loader.num_batches + step) % args.save_every == 0:
-                    #Validation
+                    # Save model to save directory
+                    checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
+                    saver.save(sess, checkpoint_path, global_step=e * data_loader.num_batches + step)
+                    print("model saved to {}".format(checkpoint_path))
+                    if step == 0:
+                        continue
+                    # Validation
                     print("Validation")
                     valid_data, true_labels = get_validate_phrases(args)
                     vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
@@ -269,10 +284,7 @@ def train_bidirectional_model(model, data_loader, args, ckpt):
                     print("RocAuc at step %d: %f" % (step, roc_auc_validation_score))
                     print("="*30)
                     logging.info("RocAuc at step %d and epoch %d : %f"%( step, e, roc_auc_validation_score))
-                    # Save model to save directory
-                    checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
-                    saver.save(sess, checkpoint_path, global_step=e * data_loader.num_batches + step)
-                    print("model saved to {}".format(checkpoint_path))
+
         checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=args.num_epochs * data_loader.num_batches)
         print("final model saved to {}".format(checkpoint_path))
@@ -293,21 +305,21 @@ def train_cnn_model(model, data_loader, args, ckpt):
         for epoch in range(args.num_epochs):
             sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** epoch)))
             data_loader.reset_batch_pointer()
-            for _step in tqdm(range(data_loader.num_batches)):
+            for step in tqdm(range(data_loader.num_batches)):
                 start = time.time()
                 batch, change = data_loader.next_batch()
                 feed = {model.input_data: batch}
-                if _step % 113 != 0:
+                if step % 113 != 0:
                     train_loss, _ = sess.run([model.cost, model.train_op], feed)
                 else:
                     train_loss = sess.run([model.cost], feed)
                     end = time.time()
                     print("{}/{} (epoch{}), train_loss = {:.3f}, time/batch = {:.3f}" \
-                          .format(epoch * data_loader.num_batches + _step,
+                          .format(epoch * data_loader.num_batches + step,
                                   args.num_epochs * data_loader.num_batches,
                                   epoch, train_loss[0], end - start))
-                if (epoch * data_loader.num_batches + _step) % args.save_every == 0:
-                    if _step == 0:
+                if (epoch * data_loader.num_batches + step) % args.save_every == 0:
+                    if step == 0:
                         continue
                     print("Validation")
                     valid_data, true_labels = get_validate_phrases(args)
@@ -329,10 +341,10 @@ def train_cnn_model(model, data_loader, args, ckpt):
                     print("="*30)
                     print("RocAuc at epoch %d: %f" % (epoch, roc_auc_validation_score))
                     print("="*30)
-                    logging.info("RocAuc at epoch %d and step %d : %f"%(epoch, _step, roc_auc_validation_score))
+                    logging.info("RocAuc at epoch %d and step %d : %f"%(epoch, step, roc_auc_validation_score))
                     # Save model and checkpoints
                     checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
-                    saver.save(sess, checkpoint_path, global_step=epoch * data_loader.num_batches + _step)
+                    saver.save(sess, checkpoint_path, global_step=epoch * data_loader.num_batches + step)
                     print("model saved to {}".format(checkpoint_path))
 
 

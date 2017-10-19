@@ -8,7 +8,7 @@ from tensorflow.python.ops import rnn_cell_impl
 rnn_cell = rnn_cell_impl
 rnn = tf.contrib.rnn
 
-
+# TODO rename
 class Model:
     def __init__(self, args, infer=False):
         self.args = args
@@ -58,9 +58,7 @@ class Model:
         outputs, last_state = tf.nn.dynamic_rnn(cell, fixed_input,
                                                initial_state=initial_state,
                                                scope="rnnlm")
-        # outputs, last_state = rnn_decoder(linears, initial_state, cell,
-        #                                   # loop_function=loop if infer else None,
-        #                                   scope="rnnlm")
+
         self.final_state = last_state
 
         loss1 = tf.constant(0.0)
@@ -68,7 +66,6 @@ class Model:
         final_vectors = []
 
         ones = tf.diag([1.] * args.batch_size)
-        print(outputs.shape)
         outputs = tf.unstack(outputs, axis = 1)
         with tf.variable_scope("output_linear"):
             for i in range(len(outputs)):
@@ -84,8 +81,7 @@ class Model:
                 matrix = tf.matmul(output, output, transpose_b=True) - ones
                 loss1 += tf.maximum(0.0, matrix)
                 final_vectors.append(output)
-            print(len(final_vectors))
-        exit()
+
         seq_slices = tf.reshape(tf.concat(final_vectors, 1), [args.batch_size, args.seq_length, args.w2v_size])
         seq_slices = tf.split(seq_slices, args.batch_size, 0)
         seq_slices = [tf.squeeze(input_, [0]) for input_ in seq_slices]

@@ -20,6 +20,7 @@ parser.add_argument("-s", "--save-dir", help="directory with stored robust model
 parser.add_argument("-w", "--word2vec-model", help="path to word2vec binary model", type=str, default="")
 parser.add_argument("-n", "--noise-level", help="probability of typo appearance", type=float, default=0)
 parser.add_argument("-p", "--percent_of_test", help="percent of data used to train", type=float, default=1)
+parser.add_argument("-t", "--model_type", help="type of model used to train", type=str, default="lstm")
 
 
 args = parser.parse_args()
@@ -81,7 +82,7 @@ if "robust" in args.mode:
         phrases.append(noise_generator(pair["text_1"], args.noise_level, chars))
         phrases.append(noise_generator(pair["text_2"], args.noise_level, chars))
     from sample import sample_multi
-    results = np.vsplit(sample_multi(args.save_dir, phrases), len(phrases))
+    results = np.vsplit(sample_multi(args.save_dir, phrases, args.model_type), len(phrases))
     for i in range(0, len(results), 2):
         v1 = results[i]
         v2 = results[i + 1]
@@ -90,7 +91,7 @@ if "robust" in args.mode:
         pred.append(1 - cosine(v1, v2))
         if math.isnan(pred[-1]):
             pred[-1] = 0.5
-    with open("results_cnn_6layer.txt", "at") as f_out:
+    with open("results_conv_lstm.txt", "at") as f_out:
         # f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
         f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
     # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
