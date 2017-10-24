@@ -110,6 +110,7 @@ class TextLoader:
             for t in sent:
                 s.append(tokens_vocab[t])
             self.tensor.append(np.array(s, dtype=np.uint32))
+        print(self.tensor)
         self.word_vocab_size = len(uniq_tokens)
         self.letter_size = self.letter_vocab.shape[1]
         with open(tensor_file, "wb") as f:
@@ -125,20 +126,33 @@ class TextLoader:
         with open(tensor_file, "rb") as f:
             self.tensor = pickle.load(f)
         self.letter_vocab = np.load(letter_vocab_file)
+        self.tensor = self.tensor
         self.letter_size = self.letter_vocab.shape[1]
         self.word_vocab_size = self.letter_vocab.shape[0]
+        print(self.letter_vocab.shape)
+        c = letters2vec("just",self.letter_vocab)
+        print(np.nonzero(c))
+        print(self.word_vocab_size)
+        print(self.tensor)
+
 
     def create_batches(self):
         self.letter_vocab = self.letter_vocab.astype(np.float32)
-        temp_tensor = np.zeros((len(self.tensor) * 50 * self.seq_length,), dtype=np.uint32)
+        temp_tensor = np.zeros((len(self.tensor) * 100 * self.seq_length,), dtype=np.uint32)
         internal_index = 0
         change = [0]
         for sent in tqdm(self.tensor):
             change[-1] = 1
             index = 0
+
             while len(sent) - index >= self.seq_length:
-                temp_tensor[internal_index * self.seq_length:internal_index * self.seq_length + self.seq_length] \
+                try:
+                    temp_tensor[internal_index * self.seq_length:internal_index * self.seq_length + self.seq_length] \
                     = sent[index:index + self.seq_length]
+                except ValueError:
+                    print(sent)
+                    print(len(sent))
+                    print(index)
                 internal_index += 1
                 index += 1
                 change.append(0)
@@ -175,11 +189,10 @@ class TextLoader:
         print('Vocabulary from: {}'.format(self.data_dir))
         sents = []
         for f in tqdm(glob(os.path.join(self.data_dir, "*"))):
-            if not f.endswith(".txt"):
+            if not f.endswith("train.txt"):
                 continue
             with open(f) as f_in:
                 sents += sent_tokenize(f_in.read().encode().decode("iso-8859-9"))
-        print('sents{}'.format(sents))
         counter = Counter()
         for s in tqdm(sents):
             for t in s:

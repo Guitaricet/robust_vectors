@@ -10,6 +10,7 @@ import numpy as np
 import codecs
 import logging
 from six.moves import cPickle
+from sentiment_sampling import linear_svm, preproc_sentence
 
 from scipy.spatial.distance import cosine
 from sklearn.metrics import roc_auc_score
@@ -92,6 +93,14 @@ def get_validate_phrases(args):
 
     return phrases, true
 
+
+def get_data_for_sentiment(args):
+    import pandas as pd
+    valid_path = os.path.join(args.data_dir, "valid.txt")
+    full_data = pd.read_table(valid_path)
+    dt = full_data.loc[:, 'SentimentText']
+    y_target = full_data['Sentiment']
+    return dt, y_target.values
 
 def train(args):
     # check compatibility if training is continued from previously saved model
@@ -205,9 +214,11 @@ def train_one_forward_model(model, data_loader, args, ckpt):
                         pred.append(1 - cosine(v1, v2))
                         if math.isnan(pred[-1]):
                             pred[-1] = 0.5
+                    roc_auc_validation_score = roc_auc_score(true_labels, pred)
                     print("="*30)
-                    print("RocAuc at step %d: %f" % (step, roc_auc_score(true_labels, pred)))
+                    print("RocAuc at step %d: %f" % (step, roc_auc_validation_score))
                     print("="*30)
+                    logging.info("RocAuc at step %d and epoch %d : %f"%( step, b, roc_auc_validation_score))
 
                     # Save model and checkpoints
                     checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
@@ -319,33 +330,40 @@ def train_cnn_model(model, data_loader, args, ckpt):
                                   args.num_epochs * data_loader.num_batches,
                                   epoch, train_loss[0], end - start))
                 if (epoch * data_loader.num_batches + step) % args.save_every == 0:
-                    if step == 0:
-                        continue
+                    # if step == 0:
+                    #     continue
+
+                    # Save model and checkpoints
+                    checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
+                    saver.save(sess, checkpoint_path, global_step=epoch * data_loader.num_batches + step)
+                    print("model saved to {}".format(checkpoint_path))
+
                     print("Validation")
-                    valid_data, true_labels = get_validate_phrases(args)
+                    valid_data, true_labels = get_data_for_sentiment(args)
                     vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
                     vectors = np.zeros((len(valid_data), vector.shape[0]))
                     vectors[0, :] = vector
                     for i in tqdm(range(1, len(valid_data))):
                         vectors[i, :] = np.mean(model.valid_run(sess, saved_vocab, valid_data[i]), axis=0)
-                    valid_results = np.vsplit(vectors,len(valid_data))
-                    pred = []
-                    for i in range(0, len(valid_results), 2):
-                        v1 = valid_results[i]
-                        v2 = valid_results[i + 1]
-                        pred.append(1 - cosine(v1, v2))
-                        if math.isnan(pred[-1]):
-                            logging.info("prediction contains nan")
-                            pred[-1] = 0.5
-                    roc_auc_validation_score = roc_auc_score(true_labels, pred)
+                    valid_results = np.squeeze(np.vsplit(vectors,len(valid_data)))
+                    valid_train = valid_results[20:]
+                    valid_test = valid_results[:20]
+                    train_label = true_labels[20:]
+                    test_label = true_labels[:20]
+                    roc_auc_validation_score = linear_svm(valid_train, valid_test, train_label, test_label)
+                    #TODO validate as a interface of other method
+                    # for i in range(0, len(valid_results), 2):
+                    #     v1 = valid_results[i]
+                    #     v2 = valid_results[i + 1]
+                    #     pred.append(1 - cosine(v1, v2))
+                    #     if math.isnan(pred[-1]):
+                    #         logging.info("prediction contains nan")
+                    #         pred[-1] = 0.5
+                    # roc_auc_validation_score = roc_auc_score(true_labels, pred)
                     print("="*30)
                     print("RocAuc at epoch %d: %f" % (epoch, roc_auc_validation_score))
                     print("="*30)
                     logging.info("RocAuc at epoch %d and step %d : %f"%(epoch, step, roc_auc_validation_score))
-                    # Save model and checkpoints
-                    checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
-                    saver.save(sess, checkpoint_path, global_step=epoch * data_loader.num_batches + step)
-                    print("model saved to {}".format(checkpoint_path))
 
 
         checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')

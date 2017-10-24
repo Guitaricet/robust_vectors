@@ -95,6 +95,7 @@ class Model:
                 loss2 += 1. - matrix
 
         self.target = final_vectors[-1]
+        print(self.target.shape)
         self.cost = tf.reduce_sum(loss1) / args.batch_size / args.seq_length
         self.cost += tf.reduce_sum(loss2) / args.batch_size / args.seq_length
         self.final_state = last_state
@@ -165,7 +166,6 @@ class Model:
         targets = []
         for token in tokens:
             x = letters2vec(token, vocab).reshape((1, 1, -1))
-
             feed = {self.input_data: x,
                     self.initial_state: state,
                     self.change: np.zeros((1,))

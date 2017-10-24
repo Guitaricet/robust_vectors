@@ -63,7 +63,7 @@ def sample_multi(save_dir, data, model_type):
     elif model_type == 'cnn_lstm':
         model = ConvLSTMModel(saved_args, True)
     else:
-        model = Model(saved_args)
+        model = Model(saved_args, True)
 
     #model = Conv3LayerModel(saved_args, True)
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
@@ -78,11 +78,6 @@ def sample_multi(save_dir, data, model_type):
             vectors[0, :] = vector
             for i in tqdm(range(1, len(data))):
                 vectors[i, :] = np.mean(model.sample(sess, vocab, data[i]), axis=0)
-                if(vectors[i, :] == np.zeros_like(vector)).all():
-                    print(model.sample(sess, vocab, data[i]))
-                    print(data[i])
-                    print(len(data[i]))
-                    exit()
     return vectors
 
 if __name__ == '__main__':

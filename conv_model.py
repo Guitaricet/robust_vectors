@@ -188,7 +188,7 @@ class Conv3LayerModel:
     def valid_run(self, sess, vocab, prime):
         tokens = word_tokenize(prime)
         valids = np.zeros((len(tokens), self.args.w2v_size))
-        word = np.zeros((len(tokens), 833))
+        word = np.zeros((len(tokens), self.args.letter_size))
         seq_l = self.args.seq_length
         for i, token in enumerate(tokens):
             x = letters2vec(token, vocab)
@@ -215,7 +215,7 @@ class Conv3LayerModel:
     def sample(self, sess, vocab, prime=' '):
         tokens = word_tokenize(prime)
         targets = np.zeros((len(tokens), self.args.w2v_size)) #? TODO remove punctuation?
-        word = np.zeros((len(tokens), 833))
+        word = np.zeros((len(tokens), self.args.letter_size))
         seq_l = self.args.seq_length
         for i, token in enumerate(tokens):
             x = letters2vec(token, vocab)
@@ -231,7 +231,8 @@ class Conv3LayerModel:
             if (i == (len(tokens) - 1)) and (len(tokens) < seq_l):
                 word = np.append(word, np.zeros((seq_l - len(tokens), self.args.letter_size)))
                 fix_words = word.reshape((1, seq_l, self.args.letter_size))
-                feed = {self.input_data: fix_words,
+                feed = {
+                    self.input_data: fix_words,
                         }
                 [target] = sess.run([self.target], feed)
                 return np.squeeze(target)
