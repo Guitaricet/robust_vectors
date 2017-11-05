@@ -203,7 +203,7 @@ class ConvLSTMModel:
     def valid_run(self, sess, vocab, prime):
         tokens = word_tokenize(prime)
         valids =[] # np.zeros((len(tokens), self.args.w2v_size))
-        word = np.zeros((len(tokens), 833))
+        word = np.zeros((len(tokens), self.args.letter_size))
         seq_l = self.args.seq_length
         for i, token in enumerate(tokens):
             x = letters2vec(token, vocab)
@@ -231,7 +231,7 @@ class ConvLSTMModel:
         tokens = word_tokenize(prime)
         #targets = np.zeros((len(tokens), self.args.w2v_size)) #? TODO remove punctuation?
         targets = []
-        word = np.zeros((len(tokens), 833))
+        word = np.zeros((len(tokens), self.args.letter_size))
         seq_l = self.args.seq_length
         for i, token in enumerate(tokens):
             x = letters2vec(token, vocab)

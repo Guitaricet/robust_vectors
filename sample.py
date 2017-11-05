@@ -65,7 +65,6 @@ def sample_multi(save_dir, data, model_type):
     else:
         model = Model(saved_args, True)
 
-    #model = Conv3LayerModel(saved_args, True)
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
     with tf.Session(config=config) as sess:
         tf.initialize_all_variables().run()

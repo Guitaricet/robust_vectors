@@ -1,6 +1,8 @@
 import tensorflow as tf
 import numpy as np
 from nltk.tokenize import word_tokenize
+from tensorflow.python.ops.rnn_cell_impl import DropoutWrapper
+
 from utils import letters2vec
 
 rnn = tf.contrib.rnn
@@ -31,8 +33,8 @@ class BiLSTM:
 
         self.change = tf.placeholder(tf.bool, [args.batch_size])
 
-        initial_state_fw = self.initial_state_fw  # tf.where(self.change, cell_fw.zero_state(args.batch_size, tf.float32), self.initial_state_fw)
-        initial_state_bw = self.initial_state_bw  # tf.where(self.change, cell_bw.zero_state(args.batch_size, tf.float32), self.initial_state_bw)
+        #initial_state_fw = tf.where(self.change, self.cell_fw.zero_state(args.batch_size, tf.float32), self.initial_state_fw)
+        #initial_state_bw = tf.where(self.change, self.cell_bw.zero_state(args.batch_size, tf.float32), self.initial_state_bw)
 
         inputs = tf.split(self.input_data, args.seq_length, 1)
         inputs = [tf.squeeze(input_, [1]) for input_ in inputs]

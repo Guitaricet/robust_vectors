@@ -21,7 +21,7 @@ def create_clean_model():
     corpus = []
     print("reading data")
     for f in tqdm(glob(os.path.join(args.data_dir, "*"))):
-        if not f.endswith(".txt"):
+        if not f.endswith("train.txt"):
             continue
         with open(f) as f_in:
             corpus.append(sent_tokenize(f_in.read()))
@@ -37,7 +37,7 @@ def create_clean_model():
     print(clean_corpus[:10])
     model = Word2Vec(clean_corpus, size=300, window=5, min_count=2, workers=4, iter=200)
 
-    with codecs.open("save/word2vec_MRPC", "wb") as f_out:
+    with codecs.open("save/word2vec_" + args.data_dir.split("/")[-2], "wb") as f_out:
         model.save(f_out)
     return clean_corpus
 
