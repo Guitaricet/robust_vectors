@@ -1,6 +1,7 @@
 import tensorflow as tf
 
 from nn_utils import rnn_decoder
+from sru import SRUCell
 from utils import letters2vec
 from nltk.tokenize import word_tokenize
 import numpy as np
@@ -22,23 +23,19 @@ class Model:
             cell_fn = rnn_cell.GRUCell
         elif args.model == 'lstm':
             cell_fn = rnn_cell.BasicLSTMCell
-        elif args.model == 'biLSTM':
-            # Forward direction cell
-            cell_fn1 = rnn.BasicLSTMCell
-            # Backward direction cell
-            cell_fn2 = rnn.BasicLSTMCell
+        elif args.model == 'sru':
+            cell_fn = SRUCell
         else:
             raise Exception("model type not supported: {}".format(args.model))
 
-        # Attention this model is suitable for bidirectional LSTM (for test)
-        cell = cell_fn(args.rnn_size, state_is_tuple=False)# is not necesery arg
+        with tf.variable_scope("rnn", reuse=True):
+            cell = cell_fn(args.rnn_size, state_is_tuple=False)# is not necesery arg
 
-        self.cell = cell = rnn_cell.MultiRNNCell([cell] * args.num_layers, state_is_tuple=False)
+        self.cell = cell #= rnn_cell.MultiRNNCell([cell] * args.num_layers, state_is_tuple=False)
 
         self.input_data = tf.placeholder(tf.float32, [args.batch_size, args.seq_length, args.letter_size])
         self.initial_state = cell.zero_state(args.batch_size, tf.float32)
         self.change = tf.placeholder(tf.bool, [args.batch_size])
-
         initial_state = tf.where(self.change, cell.zero_state(args.batch_size, tf.float32), self.initial_state)
 
         inputs = tf.split(self.input_data, args.seq_length, 1)
@@ -46,18 +43,29 @@ class Model:
 
         with tf.variable_scope("input_linear"):
             linears = []
-            for i, _input in enumerate(inputs):
-                if i > 0:
-                    tf.get_variable_scope()
-                full_vector = tf.contrib.layers.fully_connected(_input, args.rnn_size,
-                                                                activation_fn=None)
-                linears.append(full_vector)
-        fixed_input = tf.stack(linears, axis=1)
-        fixed_input = tf.reshape(fixed_input, [self.args.batch_size, self.args.seq_length, -1])
+            # for i, _input in enumerate(inputs):
+            #     if i > 0:
+            #         tf.get_variable_scope()
+                # full_vector = tf.contrib.layers.fully_connected(_input, args.rnn_size,
+                #                                                 activation_fn=None)
+                # linears.append(full_vector)
 
-        outputs, last_state = tf.nn.dynamic_rnn(cell, fixed_input,
-                                               initial_state=initial_state,
-                                               scope="rnnlm")
+            for i in range(len(inputs)):
+                if i > 0:
+                    tf.get_variable_scope().reuse_variables()
+                linears.append((rnn_cell._linear(inputs[i], args.rnn_size, bias=True)))
+
+        #fixed_input = tf.stack(linears, axis=1)
+        #fixed_input = tf.reshape(fixed_input, [self.args.batch_size, self.args.seq_length, -1])
+        # with tf.variable_scope("rnn_scope"):
+        #     tf.get_variable_scope().reuse_variables()
+        # outputs, last_state = tf.nn.dynamic_rnn(cell, fixed_input,
+        #                                        initial_state=initial_state,
+        #                                        scope="rnnlm")
+
+        outputs, last_state = rnn_decoder(linears, initial_state, cell,
+                                          # loop_function=loop if infer else None,
+                                          scope="rnnlm")
 
         self.final_state = last_state
 
@@ -66,15 +74,19 @@ class Model:
         final_vectors = []
 
         ones = tf.diag([1.] * args.batch_size)
-        outputs = tf.unstack(outputs, axis = 1)
+        #outputs = tf.unstack(outputs, axis = 1)
         with tf.variable_scope("output_linear"):
             for i in range(len(outputs)):
+                # if i > 0:
+                #     tf.get_variable_scope()
+                # output = tf.contrib.layers.fully_connected(outputs[i], args.w2v_size,
+                #                                            activation_fn=None)
+                #
+                # print(output.shape)
                 if i > 0:
-                    tf.get_variable_scope()
-                output = tf.contrib.layers.fully_connected(outputs[i], args.w2v_size,
-                                                           activation_fn=None)
+                    tf.get_variable_scope().reuse_variables()
+                output = rnn_cell._linear(outputs[i], args.w2v_size, bias=True)
 
-                print(output.shape)
                 output = tf.nn.l2_normalize(output, 1)
                 output = tf.nn.dropout(output, args.dropout_keep_prob)
                 # negative sampling
@@ -95,18 +107,19 @@ class Model:
                 loss2 += 1. - matrix
 
         self.target = final_vectors[-1]
-        print(self.target.shape)
         self.cost = tf.reduce_sum(loss1) / args.batch_size / args.seq_length
         self.cost += tf.reduce_sum(loss2) / args.batch_size / args.seq_length
         self.final_state = last_state
         self.lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
-        grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars,
-                                                       aggregation_method=
-                                                       tf.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N),
-                                          args.grad_clip)
-        optimizer = tf.train.AdamOptimizer(self.lr)
-        self.train_op = optimizer.apply_gradients(zip(grads, tvars))
+
+        with tf.variable_scope(tf.get_variable_scope(), reuse=False):
+            grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars,
+                                                           aggregation_method=
+                                                           tf.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N),
+                                              args.grad_clip)
+            optimizer = tf.train.AdamOptimizer(self.lr)
+            self.train_op = optimizer.apply_gradients(zip(grads, tvars))
         # Validation
         self.valid_data = tf.placeholder(tf.float32, [1, 1, args.letter_size])
         self.valid_initial_state = cell.zero_state(1, tf.float32)

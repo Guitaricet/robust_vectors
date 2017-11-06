@@ -91,7 +91,7 @@ if "robust" in args.mode:
         pred.append(1 - cosine(v1, v2))
         if math.isnan(pred[-1]):
             pred[-1] = 0.5
-    with open("results_conv_lstm.txt", "at") as f_out:
+    with open("results_sru_lstm.txt", "at") as f_out:
         # f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
         f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
     # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)

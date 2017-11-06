@@ -187,7 +187,7 @@ class TextLoader:
         print('Vocabulary from: {}'.format(self.data_dir))
         sents = []
         for f in tqdm(glob(os.path.join(self.data_dir, "*"))):
-            if (not f.endswith("test.txt")):
+            if (not f.endswith(".txt")):
                 continue
             with open(f) as f_in:
                 sents += sent_tokenize(f_in.read().encode().decode("iso-8859-9"))

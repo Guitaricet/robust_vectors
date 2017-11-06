@@ -78,7 +78,6 @@ def get_validate_phrases(args):
             f.readline()
             for line in f:
                 parts = line.strip().split("\t")
-                print(parts)
                 pair = {"text_1": parts[3], "text_2": parts[4], "decision": float(parts[0])}
                 pairs.append(pair)
     pairs = pairs
@@ -229,7 +228,7 @@ def train_one_forward_model(model, data_loader, args, ckpt):
                                   step, train_loss[0], end - start))
                 if (step * data_loader.num_batches + b) % args.save_every == 0:
                     print("Validation")
-                    valid_data, true_labels = get_validate_entailment(args)
+                    valid_data, true_labels = get_validate_phrases(args)
                     vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
                     vectors = np.zeros((len(valid_data), vector.shape[0]))
                     vectors[0, :] = vector
