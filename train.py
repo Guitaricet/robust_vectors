@@ -97,11 +97,15 @@ def get_validate_entailment(args):
     phrases = []
     import pandas as pd
     valid_path = os.path.join(args.data_dir, "valid.txt")
-
-    full_df = pd.read_csv(valid_path)
+    if valid_path.contains("quora"):
+        full_df = pd.read_csv(valid_path, sep='\t')
+        decision = "duplicate"
+    else:
+        decision = "gold_label"
+        full_df = pd.read_csv(valid_path)
     for index, row in full_df.iterrows():
         pair = {"text_1": row['sentence1'], "text_2": row["sentence2"],
-                "decision": int(row["duplicate"])} #ist(filter(lambda x: x.isdigit(), row["gold_label"]))[0]
+                "decision": int(row[decision])} #ist(filter(lambda x: x.isdigit(), row["gold_label"]))[0]
         pairs.append(pair)
         #        with codecs.open(os.path.join(args.data_dir, filename), encoding="utf-8") as f:
 #            f.readline()

@@ -9,6 +9,8 @@ import pandas as pd
 import math
 from gensim.models import Word2Vec
 from scipy.spatial.distance import cosine
+
+from sentiment_sampling import linear_svm
 from utils import noise_generator
 from tqdm import tqdm
 from random import random, choice
@@ -56,6 +58,32 @@ def get_robust_score(args, pairs, true):
             # f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
             f_out.write(args.mode + ",%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
 
+def svm_robust_score(args,data, labels):
+    idx_for_split = int(0.2 * len(data))
+    phrases = []
+    pred = []
+    for index, row in data.iterrows():
+        phrases.append(noise_generator(row["sentence1"], args.noise_level, chars))
+        phrases.append(noise_generator(row["sentence2"], args.noise_level, chars))
+    from sample import sample_multi
+    results = np.squeeze(np.vsplit(sample_multi(args.save_dir, phrases, args.model_type), len(phrases)))
+    for i in range(0, len(results), 2):
+        v1 = results[i]
+        v2 = results[i + 1]
+        if (v1 == np.zeros_like(v1)).all() or (v2 == np.zeros_like(v2)).all():
+            print(i)
+        pred.append(1 - cosine(v1, v2))
+        if math.isnan(pred[-1]):
+            pred[-1] = 0.5
+    pr = pd.DataFrame(pred)
+    train = pr.iloc[idx_for_split:]
+    test = pr.iloc[:idx_for_split]
+    train_label = labels[idx_for_split:]
+    test_label = labels[:idx_for_split]
+    roc_auc= linear_svm(train, test, train_label, test_label)
+    with open("results_" + args.model_type + ".txt", "at") as f_out:
+        # f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
+        f_out.write(args.mode + ",%.2f,%.3f\n" % (args.noise_level, roc_auc))
 
 def load_data(args):
     full_data = pd.read_csv(args.data_path)[:800]
