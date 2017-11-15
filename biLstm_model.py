@@ -3,6 +3,7 @@ import numpy as np
 from nltk.tokenize import word_tokenize
 from tensorflow.python.ops.rnn_cell_impl import DropoutWrapper
 
+from sru import SRUCell
 from utils import letters2vec
 
 rnn = tf.contrib.rnn
@@ -17,11 +18,19 @@ class BiLSTM:
 
         cell_forw = []
         cell_back = []
-        for _ in range(args.num_layers):
+        for i in range(args.num_layers):
             # Forward direction cell
-            cell_forw.append(rnn.BasicLSTMCell(args.rnn_size, forget_bias=1.0))
+            with tf.variable_scope("forward" + str(i)):
+                if(args.model =="biSRU"):
+                    cell_forw.append(SRUCell(args.rnn_size, state_is_tuple=False))
+                else:
+                    cell_forw.append(rnn.BasicLSTMCell(args.rnn_size, forget_bias=1.0))
             # Backward direction cell
-            cell_back.append(rnn.BasicLSTMCell(args.rnn_size, forget_bias=1.0))
+            with tf.variable_scope("backward" + str(i)):
+                if(args.model =="biSRU"):
+                    cell_back.append(SRUCell(args.rnn_size, state_is_tuple=False))
+                else:
+                    cell_back.append(rnn.BasicLSTMCell(args.rnn_size, forget_bias=1.0))
 
         self.cell_fw = cell_forw[0]
         self.cell_bw = cell_back[0]
@@ -33,9 +42,6 @@ class BiLSTM:
 
         self.change = tf.placeholder(tf.bool, [args.batch_size])
 
-        #initial_state_fw = tf.where(self.change, self.cell_fw.zero_state(args.batch_size, tf.float32), self.initial_state_fw)
-        #initial_state_bw = tf.where(self.change, self.cell_bw.zero_state(args.batch_size, tf.float32), self.initial_state_bw)
-
         inputs = tf.split(self.input_data, args.seq_length, 1)
         inputs = [tf.squeeze(input_, [1]) for input_ in inputs]
 
@@ -43,29 +49,31 @@ class BiLSTM:
             fixed_size_vectors = []  # tf.Variable(tf.float32, [args.seq_length, args.rnn_size,args.letter_size])
             for i, _input in enumerate(inputs):
                 if i > 0:
-                    tf.get_variable_scope()
+                    tf.get_variable_scope().reuse_variables()
                 full_vector = tf.contrib.layers.fully_connected(_input, args.rnn_size,
-                                                                activation_fn=None)
+                                                                activation_fn=None, scope="input_fc")
                 fixed_size_vectors.append(full_vector)
 
         fixed_input = tf.stack(fixed_size_vectors, axis=1)
         fixed_input = tf.reshape(fixed_input, [self.args.batch_size, self.args.seq_length, -1])
 
         output = fixed_input
-        for n in range(self.args.num_layers):
-            cell_fw = cell_forw[n]
-            cell_bw = cell_back[n]
+        with tf.variable_scope("lstm"):
+            for n in range(self.args.num_layers):
+                cell_fw = cell_forw[n]
+                cell_bw = cell_back[n]
+                print(output.shape)
+                _initial_state_fw = cell_fw.zero_state(self.args.batch_size, tf.float32)
+                _initial_state_bw = cell_bw.zero_state(self.args.batch_size, tf.float32)
 
-            _initial_state_fw = cell_fw.zero_state(self.args.batch_size, tf.float32)
-            _initial_state_bw = cell_bw.zero_state(self.args.batch_size, tf.float32)
+                (output_fw, output_bw), last_state = tf.nn.bidirectional_dynamic_rnn(cell_fw, cell_bw, output,
+                                                                                     initial_state_fw=_initial_state_fw,
+                                                                                     initial_state_bw=_initial_state_bw,
+                                                                                     scope='BLSTM_' + str(n + 1),
+                                                                                     dtype=tf.float32)
+                output = output_fw
 
-            (output_fw, output_bw), last_state = tf.nn.bidirectional_dynamic_rnn(cell_fw, cell_bw, output,
-                                                                                 initial_state_fw=_initial_state_fw,
-                                                                                 initial_state_bw=_initial_state_bw,
-                                                                                 scope='BLSTM_' + str(n + 1),
-                                                                                 dtype=tf.float32)
-
-            output = tf.concat([output_fw, output_bw], axis=2)
+        output = tf.concat([output_fw, output_bw], axis=2)
 
         outputs = output
         self.final_state = last_state
@@ -80,15 +88,16 @@ class BiLSTM:
         with tf.variable_scope("output_linear"):
             for i in range(len(outputs)):
                 if i > 0:
-                    tf.get_variable_scope()
+                    tf.get_variable_scope().reuse_variables()
                 output = tf.contrib.layers.fully_connected(outputs[i], args.w2v_size,
-                                                           activation_fn=None)
+                                                           activation_fn=None, scope="out_fc")
                 output = tf.nn.l2_normalize(output, 1)
                 output = tf.nn.dropout(output, args.dropout_keep_prob)
                 # negative sampling
                 matrix = tf.matmul(output, output, transpose_b=True) - ones
                 loss1 += tf.maximum(0.0, matrix)
                 final_vectors.append(output)
+
         seq_slices = tf.reshape(tf.concat(final_vectors, 1), [args.batch_size, args.seq_length, args.w2v_size])
         seq_slices = tf.split(seq_slices, args.batch_size, 0)
         seq_slices = [tf.squeeze(input_, [0]) for input_ in seq_slices]
@@ -106,10 +115,10 @@ class BiLSTM:
         self.cost += tf.reduce_sum(loss2) / args.batch_size / args.seq_length
         self.lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
-        grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars,
-                                                       aggregation_method=
-                                                       tf.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N),
-                                          args.grad_clip)
+        grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars), args.grad_clip) #aggregation_method=
+                                                                    #tf.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N)
+
+
         optimizer = tf.train.AdamOptimizer(self.lr)
         self.train_op = optimizer.apply_gradients(zip(grads, tvars))
         # Validation eval : TODO add None size to placeholders
@@ -118,39 +127,41 @@ class BiLSTM:
         self.valid_initial_state_fw = self.cell_fw.zero_state(1, tf.float32)
         self.valid_initial_state_bw = self.cell_bw.zero_state(1, tf.float32)
 
-        valid_initial_state_fw = self.initial_state_fw  # tf.where(self.change, cell_fw.zero_state(args.batch_size, tf.float32), self.initial_state_fw)
-        valid_initial_state_bw = self.initial_state_bw  # tf.where(self.change, cell_bw.zero_state(args.batch_size, tf.float32), self.initial_state_bw)
+        valid_initial_state_fw = self.initial_state_fw
+        valid_initial_state_bw = self.initial_state_bw
 
-        inputs = tf.split(self.valid_data, 1, 1)
-        inputs = [tf.squeeze(input_, [1]) for input_ in inputs]
+        valid_inputs = tf.split(self.valid_data, 1, 1)
+        valid_inputs = [tf.squeeze(input_, [1]) for input_ in valid_inputs]
 
         with tf.variable_scope("valid_input"):
             valid_fixed_size_vectors = []  # tf.Variable(tf.float32, [args.seq_length, args.rnn_size,args.letter_size])
-            for i, _input in enumerate(inputs):
+            for i, _input in enumerate(valid_inputs):
                 if i > 0:
-                    tf.get_variable_scope()
+                    tf.get_variable_scope().reuse_variables()
                 full_vector = tf.contrib.layers.fully_connected(_input, args.rnn_size,
-                                                                activation_fn=None)
+                                                                activation_fn=None, scope="valid_in_fc")
                 valid_fixed_size_vectors.append(full_vector)
 
         valid_fixed_input = tf.stack(valid_fixed_size_vectors, axis=1)
         valid_fixed_input = tf.reshape(valid_fixed_input, [1, 1, -1])
 
         valid_output = valid_fixed_input
-        for n in range(self.args.num_layers):
-            cell_fw = cell_forw[n]
-            cell_bw = cell_back[n]
+        with tf.variable_scope("valid_lstm"):
+            for n in range(self.args.num_layers):
+                cell_fw = cell_forw[n]
+                cell_bw = cell_back[n]
 
-            _initial_state_fw = cell_fw.zero_state(1, tf.float32)
-            _initial_state_bw = cell_bw.zero_state(1, tf.float32)
+                _initial_state_fw = cell_fw.zero_state(1, tf.float32)
+                _initial_state_bw = cell_bw.zero_state(1, tf.float32)
 
-            (valid_output_fw, valid_output_bw), valid_state = tf.nn.bidirectional_dynamic_rnn(cell_fw, cell_bw, valid_output,
-                                                                                 initial_state_fw=_initial_state_fw,
-                                                                                 initial_state_bw=_initial_state_bw,
-                                                                                 scope='BLSTM_' + str(n + 1),
-                                                                                 dtype=tf.float32)
+                (valid_output_fw, valid_output_bw), valid_state = tf.nn.bidirectional_dynamic_rnn(cell_fw, cell_bw, valid_output,
+                                                                                     initial_state_fw=_initial_state_fw,
+                                                                                     initial_state_bw=_initial_state_bw,
+                                                                                     scope='valid_BLSTM_' + str(n + 1),
+                                                                                     dtype=tf.float32)
+                valid_output = valid_output_fw
 
-            valid_output = tf.concat([valid_output_fw, valid_output_bw], axis=2)
+        valid_output = tf.concat([valid_output_fw, valid_output_bw], axis=2)
 
         valid_outputs = valid_output
         self.valid_state = valid_state
@@ -161,13 +172,11 @@ class BiLSTM:
         with tf.variable_scope("valid_output"):
             for i in range(len(valid_outputs)):
                 if i > 0:
-                    tf.get_variable_scope()
+                    tf.get_variable_scope().reuse_variables()
                 output = tf.contrib.layers.fully_connected(valid_outputs[i], args.w2v_size,
-                                                           activation_fn=None)
+                                                           activation_fn=None, scope="valid_out_fc")
                 output = tf.nn.l2_normalize(output, 1)
                 output = tf.nn.dropout(output, args.dropout_keep_prob)
-                # negative sampling
-                print(output.shape)
 
                 matrix = tf.matmul(output, output, transpose_b=True) - ones
                 loss1 += tf.maximum(0.0, matrix)
@@ -264,7 +273,7 @@ class StackedBiLstm:
             fixed_size_vectors = []  # tf.Variable(tf.float32, [args.seq_length, args.rnn_size,args.letter_size])
             for i, _input in enumerate(inputs):
                 if i > 0:
-                    tf.get_variable_scope()
+                    tf.get_variable_scope().reuse_variables()
                 full_vector = tf.contrib.layers.fully_connected(_input, args.rnn_size,
                                                                 activation_fn=None)
                 fixed_size_vectors.append(full_vector)
@@ -294,8 +303,7 @@ class StackedBiLstm:
         with tf.variable_scope("output_linear"):
             for out in outputs:
                 if i > 0:
-                    tf.get_variable_scope()
-                    # why did we use reused variables
+                    tf.get_variable_scope().reuse_variables()
 
                 output = tf.contrib.layers.fully_connected(out, args.w2v_size,
                                                            activation_fn=None)

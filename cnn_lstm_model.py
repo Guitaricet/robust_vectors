@@ -58,8 +58,21 @@ class ConvLSTMModel:
             conv3 = tf.nn.conv2d(h2, W, strides=[1, 1, 1, 1], padding="SAME", name="conv3")
             print(conv3.shape)
             h3 = tf.nn.relu(tf.nn.bias_add(conv3, b), name="relu3")
+        print(h3.shape)
 
         inputs = tf.squeeze(h3)
+        inputs = tf.reshape(inputs, [args.batch_size, args.seq_length, -1])
+        attention_size = inputs.shape[-1] #?
+        with tf.name_scope("attention"):
+
+            initializer = tf.random_uniform_initializer()
+            W_a = tf.get_variable("weights_a", [attention_size, attention_size], initializer=initializer)
+            w = tf.get_variable("weights_w", [attention_size], initializer=initializer)
+            print(inputs.shape)
+            print(W_a.shape)
+            v = tf.tanh(tf.einsum("aij,jk->aik", inputs, W_a))
+            a = tf.nn.softmax(tf.einsum("aij,j->ai", v, w))
+            print(a.shape)
         self.change = tf.placeholder(tf.bool, [args.batch_size])
 
         cell_fn = rnn.LSTMCell
@@ -67,7 +80,7 @@ class ConvLSTMModel:
         cell = cell_fn(args.rnn_size, state_is_tuple=False)# is not necesery arg
         self.cell = cell = rnn.MultiRNNCell([cell] * args.num_layers, state_is_tuple=False)
         self.initial_state = cell.zero_state(args.batch_size, tf.float32)
-
+        self.initial_state = a
         inputs = tf.reshape(inputs, [args.batch_size, args.seq_length, -1])
         print(inputs.shape)
         initial_state = self.initial_state #TODO add change to signal
