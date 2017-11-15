@@ -52,6 +52,8 @@ def sample_multi(save_dir, data, model_type):
     #ATTENTION # TODO understand what model we want to choose.
     if model_type == 'biLSTM':
         model = BiLSTM(saved_args, True)
+    elif model_type == 'biSRU':
+        model = BiLSTM(saved_args, True)
     elif model_type ==  'stackBiLstm':
         model = StackedBiLstm(saved_args, True)
     elif model_type == 'cnn3layers':
@@ -72,11 +74,11 @@ def sample_multi(save_dir, data, model_type):
         ckpt = tf.train.get_checkpoint_state(save_dir)
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(sess, ckpt.model_checkpoint_path)
-            vector = np.mean(model.sample(sess, vocab, data[0]), axis=0)
+            vector = np.mean(model.valid_run(sess, vocab, data[0]), axis=0)
             vectors = np.zeros((len(data), vector.shape[0]))
             vectors[0, :] = vector
             for i in tqdm(range(1, len(data))):
-                vectors[i, :] = np.mean(model.sample(sess, vocab, data[i]), axis=0)
+                vectors[i, :] = np.mean(model.valid_run(sess, vocab, data[i]), axis=0)
     return vectors
 
 if __name__ == '__main__':

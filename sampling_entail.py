@@ -1,5 +1,6 @@
 import codecs
 
+import catboost
 from nltk import word_tokenize
 from sklearn.metrics import roc_auc_score
 import os
@@ -54,9 +55,10 @@ def get_robust_score(args, pairs, true):
             pred.append(1 - cosine(v1, v2))
             if math.isnan(pred[-1]):
                 pred[-1] = 0.5
-        with open("results_" + args.model_type + ".txt", "at") as f_out:
+        with open("results_entail" + args.model_type + ".txt", "at") as f_out:
             # f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
             f_out.write(args.mode + ",%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
+
 
 def svm_robust_score(args,data, labels):
     idx_for_split = int(0.2 * len(data))
@@ -81,12 +83,14 @@ def svm_robust_score(args,data, labels):
     train_label = labels[idx_for_split:]
     test_label = labels[:idx_for_split]
     roc_auc= linear_svm(train, test, train_label, test_label)
-    with open("results_" + args.model_type + ".txt", "at") as f_out:
+
+    with open("results_entail_" + args.model_type + ".txt", "at") as f_out:
         # f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
         f_out.write(args.mode + ",%.2f,%.3f\n" % (args.noise_level, roc_auc))
 
+
 def load_data(args):
-    full_data = pd.read_csv(args.data_path)[:800]
+    full_data = pd.read_csv(args.data_path)[:500]
     df = full_data[['sentence1','sentence2', 'gold_label']]
     dt = df[['sentence1', 'sentence2']]
     y_target = df['gold_label'].values
@@ -110,8 +114,7 @@ def get_w2v_results(args, pairs, true):
         v1 = get_mean_vec(noise_generator(pair["sentence1"], args.noise_level, chars))
         v2 = get_mean_vec(noise_generator(pair["sentence2"], args.noise_level, chars))
         pred.append(1 - cosine(v1, v2))
-    with open("results" + args.mode + ".txt", "at") as f_out:
-        # f_out.write("word2vec,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
+    with open("results_entail_" + args.mode + ".txt", "at") as f_out:
         f_out.write("word2vec,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
 
 if __name__ == '__main__':

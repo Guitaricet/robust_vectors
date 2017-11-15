@@ -41,10 +41,7 @@ for filename in ["msr_paraphrase_test.txt"]:
             pairs.append(pair)
 num_samples = round(args.percent_of_test*len(pairs))
 pairs = pairs[:num_samples]
-# pos = filter(lambda x: x["class"] == "1", pairs)
-# neg = filter(lambda x: x["class"] == "0", pairs)
-# min_len = min(len(pos), len(neg))
-# pairs = pos[:min_len] + neg[:min_len]
+
 true = [x["decision"] for x in pairs]
 
 if "random" in args.mode:
@@ -70,10 +67,8 @@ if "word2vec" in args.mode:
         v1 = get_mean_vec(noise_generator(pair["text_1"], args.noise_level, chars))
         v2 = get_mean_vec(noise_generator(pair["text_2"], args.noise_level, chars))
         pred.append(1 - cosine(v1, v2))
-    with open("results3.txt", "at") as f_out:
-        # f_out.write("word2vec,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
+    with open("results_w2v_MRPC.txt", "at") as f_out:
         f_out.write("word2vec,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
-    # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
 
 if "robust" in args.mode:
     pred = []
@@ -91,10 +86,5 @@ if "robust" in args.mode:
         pred.append(1 - cosine(v1, v2))
         if math.isnan(pred[-1]):
             pred[-1] = 0.5
-    with open("results_sru_lstm.txt", "at") as f_out:
-        # f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, mean_squared_error(true, pred)))
+    with open("results_MRPC_" + args.model_type + ".txt", "at") as f_out:
         f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, roc_auc_score(true, pred)))
-    # print "ROC\t\t=\t%.2f" % roc_auc_score(true, pred)
-
-# print "Class ratio\t=\t%.2f" % (float(len(filter(None, true)))/len(true))
-# print "F1\t=\t%.2f" % f1_score(true, pred)

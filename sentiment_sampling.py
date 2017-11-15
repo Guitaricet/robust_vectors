@@ -51,12 +51,8 @@ def get_args():
 def linear_svm(training_data, testing_data, training_target, testing_target):
     start = time()
     clf_linear = BernoulliNB()
-    print("Training ...")
     clf_linear.fit(training_data, training_target)
-    print(testing_data.shape)
-    predict_test = clf_linear.predict(testing_data)
-    print(len(predict_test))
-    print(len(training_target))
+    predict_test = clf_linear.predict_proba(testing_data)[:,1]
     print(predict_test[:30])
     print(testing_target[:30])
     result = roc_auc_score(testing_target, predict_test)
@@ -77,7 +73,6 @@ def keras_test(train, test, train_label, test_label):
 
     model.fit(train, train_label, epochs=9, batch_size=8, verbose=2)
     score = model.evaluate(test, test_label, batch_size=1, verbose=2)
-    print(score[1])
     with open(args.model_type + "_results_sentiment.txt", "at") as f_out:
         f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, score[1]))
 
@@ -85,16 +80,11 @@ def keras_test(train, test, train_label, test_label):
 
 def samping_sentiment_data(args, data, labels):
     idx_for_split = int(0.2 * len(data))
-    print(data[0], labels[0])
-    print(data[1], labels[1])
     results = np.squeeze(np.vsplit(sample_multi(args.save_dir, data, args.model_type), len(data)))
-    print(results[0].shape)
     train = results[idx_for_split:]
     test = results[:idx_for_split]
     train_label = labels[idx_for_split:]
     test_label = labels[:idx_for_split]
-    print(len(train_label))
-    print(len(test_label))
     keras_test(train, test, train_label, test_label)
     roc_auc_score = linear_svm(train, test, train_label, test_label)
     with open(args.model_type + "_results_sentiment.txt", "at") as f_out:
@@ -103,7 +93,7 @@ def samping_sentiment_data(args, data, labels):
 
 if __name__ == '__main__':
     args = get_args()
-    full_data = pd.read_csv(args.data_path)[:800]
+    full_data = pd.read_csv(args.data_path)
     df = full_data[['SentimentText', 'Sentiment']]
     dt = df.loc[:, 'SentimentText']
     y_target = df['Sentiment'].values
