@@ -30,8 +30,7 @@ def create_data(path_to_data):
     df['duplicate'] = data["is_duplicate"]
 
     idx_to_split = int(0.002*len(data))
-    print(df.head())
-    train = df.iloc[idx_to_split:]
+    train = df.iloc[idx_to_split:20 * idx_to_split]
     test = df.iloc[:idx_to_split]
     valid = train[:idx_to_split]
     train.to_csv(path_to_data+"train.txt", sep='\t',  index=False)
