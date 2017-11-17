@@ -2,6 +2,10 @@ import tensorflow as tf
 from tensorflow.contrib.rnn import RNNCell
 from tensorflow.contrib.rnn import LSTMStateTuple
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.rnn_cell_impl import _linear
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 
 
 class SRUCell(RNNCell):
@@ -14,18 +18,12 @@ class SRUCell(RNNCell):
         self._state_is_tuple = state_is_tuple
         self._activation = activation
         self._linear = None
-
-        self.Wr = tf.Variable(self.init_matrix([self._num_units, self._num_units]))
-        self.br = tf.Variable(self.init_matrix([self._num_units]))
-
-        self.Wf = tf.Variable(self.init_matrix([self._num_units, self._num_units]))
-        self.bf = tf.Variable(self.init_matrix([self._num_units]))
-
-        self.U = tf.Variable(self.init_matrix([self._num_units, self._num_units]))
+        self._W = tf.Variable(self.init_matrix([self._num_units, 3 * self._num_units]))
+        self._bias = tf.Variable(self.init_matrix([2 * self._num_units]))
 
     @property
     def state_size(self):
-        return  self._num_units
+        return self._num_units
 
     @property
     def output_size(self):
@@ -42,21 +40,16 @@ class SRUCell(RNNCell):
         :return: state, cell
         """
         with variable_scope.variable_scope(scope or type(self).__name__):
-            if self._state_is_tuple:
-                (c_prev, h_prev) = state
-            else:
-                c_prev = state
+            U = math_ops.matmul(inputs, self._W)
 
-            f = tf.sigmoid(
-                tf.matmul(inputs, self.Wf) + self.bf
-            )
+            x_in, f_resource, r_resource = array_ops.split(value=U,
+                                                            num_or_size_splits=3,
+                                                            axis=1)
+            f_r = math_ops.sigmoid(nn_ops.bias_add(array_ops.concat(
+                 [f_resource, r_resource], 1), self._bias))
+            f, r = array_ops.split(value=f_r, num_or_size_splits=2, axis=1)
 
-            r = tf.sigmoid(
-                tf.matmul(inputs, self.Wr) + self.br
-            )
-
-            c = f * c_prev + (1.0 - f) * tf.matmul(inputs, self.U)
-
+            c = f * state + (1.0 - f) * x_in
             hidden_state = r * self._activation(c) + (1.0 - r) * inputs
 
             if self._state_is_tuple:
