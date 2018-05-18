@@ -83,7 +83,7 @@ class BiLSTM:
         final_vectors = []
 
         ones = tf.diag([1.] * args.batch_size)
-        outputs = tf.unstack(outputs, axis=1)
+        outputs = tf.unstack(outputs, axis=1)  # 1 - is sequence dim
 
         with tf.variable_scope("output_linear"):
             for i in range(len(outputs)):
@@ -206,6 +206,13 @@ class BiLSTM:
         return targets
 
     def sample(self, sess, vocab, prime=' '):
+        """
+        :param sess: tf session
+        :param vocab: char vocabulary
+        :param prime: text
+
+        :return: sequence of robust word vectors
+        """
         self.initial_state_fw = tf.convert_to_tensor(self.cell_fw.zero_state(1, tf.float32))
         self.initial_state_bw = tf.convert_to_tensor(self.cell_bw.zero_state(1, tf.float32))
         state_fw = self.initial_state_fw.eval()
