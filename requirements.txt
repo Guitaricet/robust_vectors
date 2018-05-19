@@ -1,0 +1,9 @@
+numpy
+pandas
+tensorflow
+scipy
+nltk
+sklearn
+bs4
+tqdm
+catboost

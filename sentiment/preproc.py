@@ -38,8 +38,8 @@ df['SentimentText'] = df.loc[:,'SentimentText'].apply(preproc_sentence)
 train, test = train_test_split(df, test_size=0.15, random_state=1)
 valid = train[:100]
 
-valid.to_csv(os.path.join(path_to_save,'valid.txt'),  header=True, index=False, sep='\t', mode='w')
-test.to_csv(os.path.join(path_to_save,'test.txt'),  header=True, index=False, sep='\t', mode='w')
+valid.to_csv(os.path.join(path_to_save, 'valid.txt'),  header=True, index=False, sep='\t', mode='w')
+test.to_csv(os.path.join(path_to_save, 'test.txt'),  header=True, index=False, sep='\t', mode='w')
 train.to_csv(os.path.join(path_to_save,'test.txt'),  header=True, index=False, sep='\t', mode='w')
 
 print("Finished cleaning the data")

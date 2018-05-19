@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from nltk.tokenize import word_tokenize
-from tensorflow.python.ops.rnn_cell_impl import DropoutWrapper
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell_impl import DropoutWrapper
 
 from sru import SRUCell
 from utils import letters2vec

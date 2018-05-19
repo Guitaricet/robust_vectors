@@ -129,7 +129,7 @@ class TextLoader:
         self.letter_size = self.letter_vocab.shape[1]
         self.word_vocab_size = self.letter_vocab.shape[0]
         print(self.letter_vocab.shape)
-        c = letters2vec("just",self.letter_vocab)
+        c = letters2vec("just", self.letter_vocab)
         print(np.nonzero(c))
         print(self.word_vocab_size)
 

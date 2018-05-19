@@ -280,6 +280,7 @@ def train_one_forward_model(model, data_loader, args, ckpt):
                     checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
                     saver.save(sess, checkpoint_path, global_step=step * data_loader.num_batches + b)
                     print("model saved to {}".format(checkpoint_path))
+
         checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=args.num_epochs * data_loader.num_batches)
         print("final model saved to {}".format(checkpoint_path))
