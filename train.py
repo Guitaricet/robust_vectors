@@ -22,7 +22,7 @@ from sentiment_sampling import linear_svm
 from utils import TextLoader, noise_generator
 
 logging.basicConfig(filename='validation.log', filemode='w', level=logging.INFO)
-logging.getLogger("tensorflow").setLevel(logging.WARNING) # suppress tf use info logging
+logging.getLogger("tensorflow").setLevel(logging.WARNING)  # suppress tf use info logging
 
 
 def main():

@@ -3,7 +3,7 @@ from tensorflow.contrib.rnn import RNNCell
 from tensorflow.contrib.rnn import LSTMStateTuple
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import array_ops
-from tensorflow.contrib.rnn.python.ops.core_rnn_cell_impl import _linear
+# from tensorflow.contrib.rnn.python.ops.core_rnn_cell_impl import _linear
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 

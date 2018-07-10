@@ -53,7 +53,8 @@ class Model:
             for i in range(len(inputs)):
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
-                linears.append((rnn_cell._linear(inputs[i], args.rnn_size, bias=True)))
+                linears.append(tf.layers.dense(inputs[i], args.rnn_size))
+                # linears.append((rnn_cell._linear(inputs[i], args.rnn_size, bias=True)))
 
         #fixed_input = tf.stack(linears, axis=1)
         #fixed_input = tf.reshape(fixed_input, [self.args.batch_size, self.args.seq_length, -1])
@@ -84,7 +85,8 @@ class Model:
                 # print(output.shape)
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
-                output = rnn_cell._linear(outputs[i], args.w2v_size, bias=True)
+                output = tf.layers.dense(outputs[i], args.w2v_size)
+                # output = rnn_cell._linear(outputs[i], args.w2v_size, bias=True)
 
                 output = tf.nn.l2_normalize(output, 1)
                 output = tf.nn.dropout(output, args.dropout_keep_prob)
@@ -133,7 +135,8 @@ class Model:
             for i, _input in enumerate(valid_inputs):
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
-                valid_fixed_input.append((rnn_cell._linear(valid_inputs[i], args.rnn_size, bias=True)))
+                valid_fixed_input.append(tf.layers.dense(valid_inputs[i], args.rnn_size))
+                # valid_fixed_input.append((rnn_cell._linear(valid_inputs[i], args.rnn_size, bias=True)))
 
         # valid_fixed_input = tf.stack(valid_fixed_input, axis=1)
         # valid_fixed_input = tf.reshape(valid_fixed_input, [1, 1, args.rnn_size])
@@ -157,7 +160,9 @@ class Model:
                 # valid_vectors.append(output)
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
-                output = rnn_cell._linear(valid_outputs[i], args.w2v_size, bias=True)
+                output = tf.layers.Dense(args.w2v_size)
+                # output = tf.layers.dense(valid_outputs[i], args.w2v_size)
+                # output = rnn_cell._linear(valid_outputs[i], args.w2v_size, bias=True)
                 valid_vectors.append(output)
         self.valid_vector = valid_vectors[-1]
 

@@ -187,10 +187,12 @@ class TextLoader:
         print('Vocabulary from: {}'.format(self.data_dir))
         sents = []
         for f in tqdm(glob(os.path.join(self.data_dir, "*"))):
-            if (not f.endswith(".txt")):
+            if not f.endswith(".txt"):
                 continue
             with open(f) as f_in:
                 sents += sent_tokenize(f_in.read().encode().decode("iso-8859-9"))
+        if len(sents) == 0:
+            raise RuntimeError('No data at directory %s' % self.data_dir)
         counter = Counter()
         for s in tqdm(sents):
             for t in s:
