@@ -12,12 +12,9 @@ from sample import RoVeSampler
 
 CLIP_NORM = 0.1
 
-# TODO: dataloader use rove vocab
 # TODO: train
-# TODO: move rove to train func
-# TODO: modify RNN._length
-# TODO: CUDNN RNN
 # TODO: remove smiles from mokoron
+# TODO: dataloader use rove vocab(?)
 
 ALPHABET = ['<UNK>', '\n'] + [s for s in """ abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'’’/\|_@#$%ˆ&* ̃‘+-=<>()[]{}"""]
 
@@ -60,6 +57,7 @@ class MokoronDataset:
         self.data = pd.read_csv(filepath)
         assert self.label_field in self.data.columns
         self.label2int = {l: i for i, l in enumerate(sorted(self.data[self.label_field].unique()))}
+        self.label_placeholder = np.zeros(len(self.label2int))
         self.max_text_len = max_text_len
         self.rove_path = rove_path
         self.rove_type = rove_type
@@ -158,32 +156,30 @@ class DataLoader:
 # based on github.com/roomylee/rnn-text-classification-tf
 class RNN:
     def __init__(self, sequence_length, num_classes,
-                 cell_type, hidden_size):
+                 cell_type, embeddings_size, hidden_size):
 
         # Placeholders for input, output and dropout
-        self.input_vectors = tf.placeholder(tf.float32, shape=[None, sequence_length], name='input_vectors')
-        self.labels = tf.placeholder(tf.float32, shape=[None, num_classes], name='labels')
+        self.input_vectors = tf.placeholder(tf.float32, shape=[None, sequence_length, embeddings_size], name='input_vectors')
+        self.labels = tf.placeholder(tf.int32, shape=[None], name='labels')
         self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
 
+        self.labels = tf.one_hot(self.labels, num_classes)
         text_length = self._length(self.input_vectors)
 
         # Recurrent Neural Network
         with tf.name_scope("rnn"):
+            rnn_input = tf.layers.dense(self.input_vectors, hidden_size, name='linear')
             cell = self._get_cell(hidden_size, cell_type)
             self.h_outputs, _ = tf.nn.dynamic_rnn(cell=cell,
-                                                  inputs=self.input_vectors,
+                                                  inputs=rnn_input,
                                                   sequence_length=text_length,
                                                   dtype=tf.float32)
 
-        self.last_output = self.h_outputs[0]
+        self.last_output = self.h_outputs[:, -1, :]
         self.last_output = tf.layers.dropout(self.last_output, self.dropout_prob)
 
-        # Final scores and predictions
-        with tf.name_scope("output"):
-            W = tf.get_variable("W", shape=[hidden_size, num_classes], initializer=tf.contrib.layers.xavier_initializer())
-            b = tf.Variable(tf.constant(0, shape=[num_classes]), name="b")
-            self.logits = tf.nn.xw_plus_b(self.last_output, W, b, name="logits")
-            self.predictions = tf.argmax(self.logits, 1, name="predictions")
+        self.logits = tf.layers.dense(self.last_output, num_classes, kernel_initializer=tf.contrib.layers.xavier_initializer())
+        self.predictions = tf.argmax(self.logits, 1, name="predictions")
 
         # Calculate mean cross-entropy loss
         losses = tf.nn.softmax_cross_entropy_with_logits(logits=self.logits, labels=self.labels)
@@ -205,15 +201,15 @@ class RNN:
         elif cell_type.lower() == "gru":
             return tf.nn.rnn_cell.GRUCell(hidden_size)
         elif cell_type.lower() == "sru":
-            return SRUCell(hidden_size)
+            return SRUCell(hidden_size, state_is_tuple=False)
         else:
             raise ValueError(cell_type)
 
     # Length of the sequence data
     @staticmethod
     def _length(seq):
-        relevant = tf.sign(tf.abs(seq))
-        length = tf.reduce_sum(relevant, reduction_indices=1)
+        relevant = tf.sign(tf.reduce_sum(tf.abs(seq), axis=2))
+        length = tf.reduce_sum(relevant, axis=1)
         length = tf.cast(length, tf.int32)
         return length
 
@@ -229,7 +225,7 @@ class RNN:
     #             export_outputs=export_outputs)
     #
     #     global_step = tf.train.get_global_step()
-    #     epoch_length = 164  # TODO: hardcode
+    #     epoch_length = 164
     #
     #     lr_op = tf.train.cosine_decay_restarts(1e-3, global_step, epoch_length, t_mul=1.0)
     #     optimizer = tf.train.AdamOptimizer(lr_op)
@@ -260,6 +256,7 @@ def train():
 
     writer = SummaryWriter(comment='_test')
 
+    print('Preparing datasets')
     train_dataset = MokoronDataset('../text_classification/data/mokoron/train.csv',
                                    'text_spellchecked',
                                    'sentiment',
@@ -272,22 +269,29 @@ def train():
     train_dataloader = DataLoader(train_dataset, batch_size, True, 'save/ruscorpora')
     val_dataloader = DataLoader(val_dataset, batch_size, True, None)
 
-    config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
-
-    model = RNN(128, 2, 'sru', 128)
-
-    global_step = tf.train.get_global_step()
-    lr_op = tf.train.cosine_decay_restarts(1e-3, global_step, len(train_dataloader), t_mul=1.0)
-    train_op = tf.train.AdamOptimizer(lr_op).minimize(
-        clip_grads(model.loss), global_step=global_step
-    )
+    # print('Building model')
 
     # lth = tf.train.LoggingTensorHook({'tensor_to_log_name': tensor_to_log})
 
+    print('Starting training process')
     step = 0
-    with tf.Session(config=config) as sess:
+    config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
+    with tf.Session(config=config, graph=tf.Graph()) as sess:
+        # TODO: gradient-freeze rove
         train_dataloader.load_rove(sess)
         val_dataloader.rove = train_dataloader.rove
+
+        model = RNN(sequence_length=128, num_classes=2, cell_type='sru', embeddings_size=300, hidden_size=128)
+
+        global_step = tf.train.get_or_create_global_step()
+        lr_op = tf.train.cosine_decay_restarts(1e-3, global_step, len(train_dataloader), t_mul=1.0)
+
+        optimizer = tf.train.AdamOptimizer(lr_op)
+        gradients = clip_grads(model.loss)
+
+        train_op = optimizer.apply_gradients(
+            gradients, global_step=global_step
+        )
 
         for epoch in range(epochs):
             print(f'Epoch {epoch}')
@@ -301,7 +305,8 @@ def train():
                 }
                 # summary, _ = sess.run([summary, train_op], feed_dict=feed_dict)
                 # self.train_writer.add_summary(summary)
-                sess.run(train_op, feed_dict=feed_dict)
+                loss, _ = sess.run([model.loss, train_op], feed_dict=feed_dict)
+                writer.add_scalar('loss', loss, step)
 
             # saver = tf.train.Saver()
             # saver.save(sess, model_file_path)
@@ -342,19 +347,21 @@ def evaluate(model, dataloader, sess, frac=1.0):
 
 
 if __name__ == '__main__':
-    pass
-    dataset = MokoronDataset('../text_classification/data/mokoron/train.csv',
-                             'text_spellchecked',
-                             'sentiment',
-                             'save/ruscorpora',
-                             return_vectors=False)
-    _ = dataset[4]
-    dataloader = DataLoader(dataset, 2, True, 'save/ruscorpora')
-
-    config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
-    with tf.Session(config=config) as sess:
-        dataloader.load_rove(sess)
-        batch, label = next(dataloader)
-        for batch, label in dataloader:
-            pass
-        pass
+    # pass
+    # dataset = MokoronDataset('../text_classification/data/mokoron/train.csv',
+    #                          'text_spellchecked',
+    #                          'sentiment',
+    #                          'save/ruscorpora',
+    #                          return_vectors=False)
+    # _ = dataset[4]
+    # dataloader = DataLoader(dataset, 2, True, 'save/ruscorpora')
+    #
+    # config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
+    #
+    # model = RNN(sequence_length=128, num_classes=2, cell_type='sru', embeddings_size=300, hidden_size=128)
+    #
+    # with tf.Session(config=config, graph=tf.Graph()) as sess:
+    #     dataloader.load_rove(sess)
+    #     batch, label = next(dataloader)
+    #     pass
+    train()
