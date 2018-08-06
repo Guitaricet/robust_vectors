@@ -82,3 +82,6 @@ ENV/
 data/.DS_Store
 *.pyc
 
+data
+save
+.vscode

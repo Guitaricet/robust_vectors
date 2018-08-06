@@ -118,7 +118,6 @@ class BiLSTM:
         grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars), args.grad_clip) #aggregation_method=
                                                                     #tf.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N)
 
-
         optimizer = tf.train.AdamOptimizer(self.lr)
         self.train_op = optimizer.apply_gradients(zip(grads, tvars))
         # Validation eval : TODO add None size to placeholders
@@ -205,33 +204,75 @@ class BiLSTM:
             targets.append(np.squeeze(target))
         return targets
 
-    def sample(self, sess, vocab, prime=' '):
-        """
-        :param sess: tf session
-        :param vocab: char vocabulary
-        :param prime: text
+    # def sample(self, sess, vocab, prime=' '):
+    #     """
+    #     :param sess: tf session
+    #     :param vocab: char vocabulary
+    #     :param prime: text
+    #
+    #     :return: sequence of robust word vectors
+    #     """
+    #     self.initial_state_fw = tf.convert_to_tensor(self.cell_fw.zero_state(1, tf.float32))
+    #     self.initial_state_bw = tf.convert_to_tensor(self.cell_bw.zero_state(1, tf.float32))
+    #     state_fw = self.initial_state_fw.eval()
+    #     state_bw = self.initial_state_bw.eval()
+    #     tokens = word_tokenize(prime)
+    #     targets = []
+    #     for token in tokens:
+    #         x = letters2vec(token, vocab).reshape((1, 1, -1))
+    #         feed = {self.input_data: x,
+    #                 self.initial_state_fw: state_fw,
+    #                 self.initial_state_bw: state_bw,
+    #                 self.change: np.zeros((1,))
+    #                 }
+    #         [last_state, target] = sess.run([self.final_state, self.target], feed)
+    #         state_fw = last_state[0]
+    #         state_bw = last_state[1]
+    #         targets.append(np.squeeze(target))
+    #
+    #     return targets
 
-        :return: sequence of robust word vectors
-        """
-        self.initial_state_fw = tf.convert_to_tensor(self.cell_fw.zero_state(1, tf.float32))
-        self.initial_state_bw = tf.convert_to_tensor(self.cell_bw.zero_state(1, tf.float32))
+    def sample(self, sess, vocab, prime_batch=' ', batch_size=1):
+        self.initial_state_fw = tf.convert_to_tensor(self.cell_fw.zero_state(batch_size, tf.float32))
+        self.initial_state_bw = tf.convert_to_tensor(self.cell_bw.zero_state(batch_size, tf.float32))
+        tokens = []
+        for i in prime_batch:
+            tokens.append(word_tokenize(i))
+        targets = []
+        data = []
+        max_seq = 157
+        data_arr = np.zeros((batch_size, max_seq, 833))
+        for i, token in enumerate(tokens):
+            if len(token) > max_seq:
+                token = token[:max_seq]
+            sentence_vecs = []
+            for t in token:
+                x = letters2vec(t, vocab).reshape((1, 1, -1))
+                sentence_vecs.append(x)
+
+            # data.append(np.array(sentence_vecs))
+            data_arr[i] = sentence_vecs
+
+
+        data = np.array(data_arr.reshape(max_seq,batch_size,-1))
         state_fw = self.initial_state_fw.eval()
         state_bw = self.initial_state_bw.eval()
-        tokens = word_tokenize(prime)
-        targets = []
-        for token in tokens:
-            x = letters2vec(token, vocab).reshape((1, 1, -1))
-            feed = {self.input_data: x,
+        target_vectors = []
+
+        for word_batch in data :
+            # x = letters2vec(token, vocab).reshape((1, 1, -1))
+            feed = {self.input_data: np.expand_dims(word_batch, 1),
                     self.initial_state_fw: state_fw,
                     self.initial_state_bw: state_bw,
-                    self.change: np.zeros((1,))
+                    self.change: np.zeros((batch_size,))
                     }
             [last_state, target] = sess.run([self.final_state, self.target], feed)
             state_fw = last_state[0]
             state_bw = last_state[1]
-            targets.append(np.squeeze(target))
-
-        return targets
+            word_vec = target
+            target_vectors.append(word_vec)
+        target_vectors= np.array(target_vectors)
+        return target_vectors.reshape(batch_size, max_seq, -1)
 
 
 class StackedBiLstm:

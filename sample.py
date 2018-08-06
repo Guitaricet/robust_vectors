@@ -49,12 +49,12 @@ def sample_multi(save_dir, data, model_type):
         saved_args = cPickle.load(f)
     with open(os.path.join(save_dir, 'chars_vocab.pkl'), 'rb') as f:
         _, vocab = cPickle.load(f)
-    #ATTENTION # TODO understand what model we want to choose.
+
     if model_type == 'biLSTM':
         model = BiLSTM(saved_args, True)
     elif model_type == 'biSRU':
         model = BiLSTM(saved_args, True)
-    elif model_type ==  'stackBiLstm':
+    elif model_type == 'stackBiLstm':
         model = StackedBiLstm(saved_args, True)
     elif model_type == 'cnn3layers':
         model = Conv3LayerModel(saved_args, True)
@@ -81,5 +81,90 @@ def sample_multi(save_dir, data, model_type):
                 vectors[i, :] = np.mean(model.valid_run(sess, vocab, data[i]), axis=0)
     return vectors
 
+
+class RoVeSampler:
+    def __init__(self, model_dir, model_type, sess):
+        with open(os.path.join(model_dir, 'config.pkl'), 'rb') as f:
+            saved_args = cPickle.load(f)
+        with open(os.path.join(model_dir, 'chars_vocab.pkl'), 'rb') as f:
+            _, vocab = cPickle.load(f)
+
+        # saved_args.batch_size = 2
+        # saved_args.seq_length = 1
+
+        if model_type == 'biLSTM':
+            model = BiLSTM(saved_args, True)
+        elif model_type == 'biSRU':
+            model = BiLSTM(saved_args, True)
+        elif model_type == 'stackBiLstm':
+            model = StackedBiLstm(saved_args, True)
+        elif model_type == 'cnn3layers':
+            model = Conv3LayerModel(saved_args, True)
+        elif model_type == 'conv1d':
+            model = Conv1d3Layer(saved_args, True)
+        elif model_type == 'cnn6layers':
+            model = Conv6LayerModel(saved_args, True)
+        elif model_type == 'cnn_lstm':
+            model = ConvLSTMModel(saved_args, True)
+        else:
+            model = Model(saved_args, True)
+
+        self.model = model
+        self.vocab = vocab
+        self.sess = sess
+        self.saver = tf.train.Saver(tf.all_variables())
+        self.ckpt = tf.train.get_checkpoint_state(model_dir)
+        self.saver.restore(sess, self.ckpt.model_checkpoint_path)
+
+        assert self.ckpt and self.ckpt.model_checkpoint_path
+
+    def sample_multi(self, texts, pad=None):
+        """
+        :param texts: list of strings
+        :param pad: if specified, pads vectors and returns numpy ndarray of size
+                    (batch_size=len(texts), seq_len=pad, vector_size)
+        :return: list of lists of numpy ndarrays or numpy ndarray if pad
+        """
+        vectors = []
+        for text in texts:
+            vector = self.model.valid_run(self.sess, self.vocab, text)
+            vectors.append(vector)
+
+        if pad is not None:
+            vectors = self._pad(vectors, pad)
+
+        return vectors
+
+    def sample(self, texts_batch):
+        return self.model.sample(self.sess, self.vocab, texts_batch, len(texts_batch))
+
+    def _pad(self, vectors, pad_len):
+        """
+        Zero pad the vectors
+        :param vectors: list of lists of word vectors
+        :param pad_len: sequence length
+        :return:
+        """
+        batch_size = len(vectors)
+        seq_len = pad_len
+        vector_size = vectors[0][0].shape[0]
+
+        padded = np.zeros([batch_size, seq_len, vector_size])
+        for i, text in enumerate(vectors):
+            for j, vector in enumerate(text):
+                padded[i, j, :] = vector
+
+        return padded
+
+
 if __name__ == '__main__':
     main()
+
+    config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
+    with tf.Session(config=config) as sess:
+        tf.global_variables_initializer().run()
+
+        sampler = RoVeSampler('save/brown', 'sru', sess)
+        not_vectors = sampler.sample_multi(['this is a text', 'this is anotuer'], pad=5)
+        not_vectors2 = sampler.sample(['this is a text', 'this is anotuer'])
+        pass

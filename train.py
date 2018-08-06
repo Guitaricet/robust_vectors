@@ -11,7 +11,7 @@ import numpy as np
 import tensorflow as tf
 from scipy.spatial.distance import cosine
 from six.moves import cPickle
-from sklearn.metrics import roc_auc_score, f1_score
+from sklearn.metrics import roc_auc_score, f1_score, accuracy_score
 from tqdm import tqdm
 
 from biLstm_model import BiLSTM, StackedBiLstm
@@ -27,33 +27,33 @@ logging.getLogger("tensorflow").setLevel(logging.WARNING)  # suppress tf use inf
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir', type=str, default='data/42bin_haber',
+    parser.add_argument('--data-dir', type=str, default='data',
                         help='data directory containing input.txt')
-    parser.add_argument('--save_dir', type=str, default='save',
+    parser.add_argument('--save-dir', type=str, default='save',
                         help='directory to store checkpointed models')
-    parser.add_argument('--rnn_size', type=int, default=256,
+    parser.add_argument('--rnn-size', type=int, default=256,
                         help='size of RNN hidden state')
-    parser.add_argument('--num_layers', type=int, default=2,
+    parser.add_argument('--num-layers', type=int, default=2,
                         help='number of layers in the RNN')
     parser.add_argument('--model', type=str, default='lstm',
                         help='cnn, rnn, stackBiLstm, biLSTM, gru, or lstm')
-    parser.add_argument('--batch_size', type=int, default=64,
+    parser.add_argument('--batch-size', type=int, default=64,
                         help='minibatch size')
-    parser.add_argument('--seq_length', type=int, default=8,
+    parser.add_argument('--seq-length', type=int, default=8,
                         help='RNN sequence length')
-    parser.add_argument('--num_epochs', type=int, default=25,
+    parser.add_argument('--num-epochs', type=int, default=1,
                         help='number of epochs')
-    parser.add_argument('--save_every', type=int, default=2000,
+    parser.add_argument('--save-every', type=int, default=2000,
                         help='save frequency')
-    parser.add_argument('--grad_clip', type=float, default=5.,
+    parser.add_argument('--grad-clip', type=float, default=5.,
                         help='clip gradients at this value')
-    parser.add_argument('--learning_rate', type=float, default=0.002,
+    parser.add_argument('--learning-rate', type=float, default=0.002,
                         help='learning rate')
-    parser.add_argument('--decay_rate', type=float, default=0.97,
+    parser.add_argument('--decay-rate', type=float, default=0.97,
                         help='decay rate for rmsprop')
-    parser.add_argument('--dropout_keep_prob', type=float, default=0.8,
+    parser.add_argument('--dropout-keep-prob', type=float, default=0.8,
                         help='decay rate for rmsprop')
-    parser.add_argument('--type', type=str, default="para",
+    parser.add_argument('--type', type=str, default=None,
                         help="""type of task
                                 1)para - paraphrase
                                 2)sentiment
@@ -61,7 +61,7 @@ def main():
                                 4)quora
                                 """)
 
-    parser.add_argument('--init_from', type=str, default=None,
+    parser.add_argument('--init-from', type=str, default=None,
                         help="""continue training from saved model at this path. Path must contain files saved by previous training process:
                             'config.pkl'        : configuration;
                             'chars_vocab.pkl'   : vocabulary definitions;
@@ -69,9 +69,9 @@ def main():
                                                   Note: this file contains absolute paths, be careful when moving files around;
                             'model.ckpt-*'      : file(s) with model definition (created by tf)
                         """)
-    parser.add_argument('--w2v_size', type=int, default=300,
+    parser.add_argument('--w2v-size', type=int, default=300,
                         help='number of dimensions in word embedding')
-    parser.add_argument('--noise_level', type=float, default=0.05,
+    parser.add_argument('--noise-level', type=float, default=0.05,
                         help='probability og typo')
     args = parser.parse_args()
     print(args)
@@ -127,6 +127,7 @@ def get_validate_entailment(args):
 
     return phrases, true
 
+
 def get_data_for_sentiment(args):
     import pandas as pd
     valid_path = os.path.join(args.data_dir, "valid.txt")
@@ -135,6 +136,7 @@ def get_data_for_sentiment(args):
     y_target = full_data['Sentiment']
     print(dt[:2], y_target[:2])
     return dt, y_target.values
+
 
 def train(args):
     # check compatibility if training is continued from previously saved model
@@ -155,7 +157,7 @@ def train(args):
         assert ckpt.model_checkpoint_path, "No model path found in checkpoint"
 
         # open old config and check if models are compatible
-        with codecs.open(os.path.join(args.init_from, 'config.pkl'),'rb') as f:
+        with codecs.open(os.path.join(args.init_from, 'config.pkl'), 'rb') as f:
             saved_model_args = cPickle.load(f)
         need_be_same = ["model", "rnn_size", "num_layers", "seq_length"]
         for checkme in need_be_same:
@@ -208,8 +210,19 @@ def train(args):
 
 def train_one_forward_model(model, data_loader, args, ckpt):
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.3))
-    with codecs.open(os.path.join(args.save_dir, 'chars_vocab.pkl'),'rb') as f:
+    with codecs.open(os.path.join(args.save_dir, 'chars_vocab.pkl'), 'rb') as f:
         saved_chars, saved_vocab = cPickle.load(f)
+
+    checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
+    save_model_path = os.path.join(args.save_dir, 'model.tf')
+    # input_ = {
+    #     'x': model.input_data,
+    #     'change': model.change,
+    #     'init_state': model.initial_state
+    # }
+    # output_ = {
+    #     ''
+    # }
 
     with tf.Session(config=config) as sess:
         tf.global_variables_initializer().run()
@@ -231,64 +244,72 @@ def train_one_forward_model(model, data_loader, args, ckpt):
                 else:
                     train_loss = sess.run([model.cost], feed)
                     end = time.time()
-                    print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
+                    print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}"\
                           .format(step * data_loader.num_batches + b,
                                   args.num_epochs * data_loader.num_batches,
-                                  b, train_loss[0], end - start))
+                                  step, train_loss[0], end - start))
                 if (step * data_loader.num_batches + b) % args.save_every == 0:
-                    print("Validation")
-                    if args.type != 'sentiment':
-                        if args.type == 'para':
-                            valid_data, true_labels = get_validate_phrases(args)
-                        if args.type == 'entail':
-                            valid_data, true_labels = get_validate_entailment(args)
-                        vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
-                        vectors = np.zeros((len(valid_data), vector.shape[0]))
-                        vectors[0, :] = vector
-                        for i in tqdm(range(1, len(valid_data))):
-                            vectors[i, :] = np.mean(model.valid_run(sess, saved_vocab, valid_data[i]), axis=0)
-                        valid_results = np.vsplit(vectors,len(valid_data))
-                        pred = []
-                        for i in range(0, len(valid_results), 2):
-                            v1 = valid_results[i]
-                            v2 = valid_results[i + 1]
-                            pred.append(1 - cosine(v1, v2))
-                            if math.isnan(pred[-1]):
-                                pred[-1] = 0.5
-                        roc_auc_validation_score = roc_auc_score(true_labels, pred)
-                    if (args.type == 'sentiment'):
-                        valid_data, true_labels = get_data_for_sentiment(args)
-                        vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
-                        vectors = np.zeros((len(valid_data), vector.shape[0]))
-                        vectors[0, :] = vector
-                        for i in tqdm(range(1, len(valid_data))):
-                            vectors[i, :] = np.mean(model.valid_run(sess, saved_vocab, valid_data[i]), axis=0)
-                        valid_results = np.squeeze(np.vsplit(vectors, len(valid_data)))
-                        idx_tosplit = int(0.2 * len(valid_results))
-                        valid_train = valid_results[idx_tosplit:]
-                        valid_test = valid_results[:idx_tosplit]
-                        train_label = true_labels[idx_tosplit:]
-                        test_label = true_labels[:idx_tosplit]
-                        roc_auc_validation_score = linear_svm(valid_train, valid_test, train_label, test_label)
+                    if args.type is not None:
+                        print("Validation")
+                        if args.type != 'sentiment':
+                            if args.type == 'para':
+                                valid_data, true_labels = get_validate_phrases(args)
+                            elif args.type == 'entail':
+                                valid_data, true_labels = get_validate_entailment(args)
+                            else:
+                                raise ValueError(args.type)
+                            vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
+                            vectors = np.zeros((len(valid_data), vector.shape[0]))
+                            vectors[0, :] = vector
+                            for i in tqdm(range(1, len(valid_data))):
+                                vectors[i, :] = np.mean(model.valid_run(sess, saved_vocab, valid_data[i]), axis=0)
+                            valid_results = np.vsplit(vectors, len(valid_data))
+                            pred = []
+                            for i in range(0, len(valid_results), 2):
+                                v1 = valid_results[i]
+                                v2 = valid_results[i + 1]
+                                pred.append(1 - cosine(v1, v2))
+                                if math.isnan(pred[-1]):
+                                    pred[-1] = 0.5
+                            roc_auc_validation_score = roc_auc_score(true_labels, pred)
+                            f1_validation_score = f1_score(true_labels, pred)
+                            acc_validation_score = accuracy_score(true_labels, pred)
 
-                    print("="*30)
-                    print("RocAuc at step %d: %f" % (step, roc_auc_validation_score))
-                    print("="*30)
-                    logging.info("RocAuc at step %d and epoch %d : %f"%( step, b, roc_auc_validation_score))
+                        elif args.type == 'sentiment':
+                            valid_data, true_labels = get_data_for_sentiment(args)
+                            vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
+                            vectors = np.zeros((len(valid_data), vector.shape[0]))
+                            vectors[0, :] = vector
+                            for i in tqdm(range(1, len(valid_data))):
+                                vectors[i, :] = np.mean(model.valid_run(sess, saved_vocab, valid_data[i]), axis=0)
+                            valid_results = np.squeeze(np.vsplit(vectors, len(valid_data)))
+                            idx_tosplit = int(0.2 * len(valid_results))
+                            valid_train = valid_results[idx_tosplit:]
+                            valid_test = valid_results[:idx_tosplit]
+                            train_label = true_labels[idx_tosplit:]
+                            test_label = true_labels[:idx_tosplit]
+                            roc_auc_validation_score = linear_svm(valid_train, valid_test, train_label, test_label)
+                        else:
+                            raise ValueError(args.type)
+
+                        print("="*30)
+                        print("RocAuc at step %d: %f" % (step, roc_auc_validation_score))
+                        print("="*30)
+                        logging.info("RocAuc at step %d and epoch %d : %f" % (step, b, roc_auc_validation_score))
 
                     # Save model and checkpoints
-                    checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
                     saver.save(sess, checkpoint_path, global_step=step * data_loader.num_batches + b)
+                    # tf.saved_model.simple_save(sess, save_model_path)
                     print("model saved to {}".format(checkpoint_path))
 
-        checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=args.num_epochs * data_loader.num_batches)
+        # tf.saved_model.simple_save(sess, save_model_path)
         print("final model saved to {}".format(checkpoint_path))
 
 
 def train_bidirectional_model(model, data_loader, args, ckpt):
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.3))
-    with codecs.open(os.path.join(args.save_dir, 'chars_vocab.pkl'),'rb') as f:
+    with codecs.open(os.path.join(args.save_dir, 'chars_vocab.pkl'), 'rb') as f:
         saved_chars, saved_vocab = cPickle.load(f)
 
     with tf.Session(config=config) as sess:
@@ -449,10 +470,10 @@ def train_cnn_model(model, data_loader, args, ckpt):
                     print("="*30)
                     logging.info("RocAuc at epoch %d and step %d : %f"%(epoch, step, roc_auc_validation_score))
 
-
         checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=args.num_epochs * data_loader.num_batches)
         print("final model saved to {}".format(checkpoint_path))
+
 
 if __name__ == '__main__':
     main()
