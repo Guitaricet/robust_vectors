@@ -12,7 +12,6 @@ from sample import RoVeSampler
 
 CLIP_NORM = 0.1
 
-# TODO: train
 # TODO: remove smiles from mokoron
 # TODO: dataloader use rove vocab(?)
 
@@ -163,7 +162,7 @@ class RNN:
         self.labels = tf.placeholder(tf.int32, shape=[None], name='labels')
         self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
 
-        self.labels = tf.one_hot(self.labels, num_classes)
+        labels_one_hot = tf.one_hot(self.labels, num_classes)
         text_length = self._length(self.input_vectors)
 
         # Recurrent Neural Network
@@ -182,11 +181,11 @@ class RNN:
         self.predictions = tf.argmax(self.logits, 1, name="predictions")
 
         # Calculate mean cross-entropy loss
-        losses = tf.nn.softmax_cross_entropy_with_logits(logits=self.logits, labels=self.labels)
+        losses = tf.nn.softmax_cross_entropy_with_logits(logits=self.logits, labels=labels_one_hot)
         self.loss = tf.reduce_mean(losses)
 
         # Metrics
-        self.labels_int = tf.argmax(self.labels, axis=1)
+        self.labels_int = tf.argmax(labels_one_hot, axis=1)
         # self.accuracy = tf.metrics.accuracy(labels_int, self.predictions)
         # self.precision = tf.metrics.precision(labels_int, self.predictions)
         # self.recall = tf.metrics.recall(labels_int, self.predictions)
@@ -292,6 +291,8 @@ def train():
         train_op = optimizer.apply_gradients(
             gradients, global_step=global_step
         )
+
+        sess.run(tf.global_variables_initializer())
 
         for epoch in range(epochs):
             print(f'Epoch {epoch}')
