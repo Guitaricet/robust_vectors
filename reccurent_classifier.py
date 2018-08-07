@@ -115,8 +115,13 @@ class DataLoader:
         self.max_text_len = max_text_len
         self.buffer = None  # for debug
 
+    def build_rove_graph(self):
+        self.rove = RoVeSampler(self.rove_path, self.rove_type, sess=None)
+
     def load_rove(self, sess):
-        self.rove = RoVeSampler(self.rove_path, self.rove_type, sess)
+        if self.rove is None:
+            self.build_rove_graph()
+        self.rove.restore(sess)
 
     def __len__(self):
         return len(self.dataset) // self.batch_size
@@ -137,7 +142,7 @@ class DataLoader:
 
         self._batch_pointer += 1
         self.buffer = batch
-        batch = self.rove.sample_multi(batch, pad=self.max_text_len)
+        batch = self.rove.sample(batch, pad=self.max_text_len)
         return batch, labels
 
     def __iter__(self):
@@ -212,48 +217,47 @@ class RNN:
         length = tf.cast(length, tf.int32)
         return length
 
-    # def model_fn(self, features, labels, mode, params):
-    #     predict_output = {'values': self.logits}
-    #     if mode == tf.estimator.ModeKeys.PREDICT:
-    #         export_outputs = {
-    #             'predictions': tf.estimator.export.PredictOutput(predict_output)
-    #         }
-    #         return tf.estimator.EstimatorSpec(
-    #             mode=mode,
-    #             predictions=predict_output,
-    #             export_outputs=export_outputs)
-    #
-    #     global_step = tf.train.get_global_step()
-    #     epoch_length = 164
-    #
-    #     lr_op = tf.train.cosine_decay_restarts(1e-3, global_step, epoch_length, t_mul=1.0)
-    #     optimizer = tf.train.AdamOptimizer(lr_op)
-    #     train_op = optimizer.minimize(clip_grads(self.loss), global_step=global_step)
-    #     eval_metric_ops = {
-    #         'accuracy': self.accuracy,
-    #         'f1': self.f1
-    #     }
-    #
-    #     estimator_spec = tf.estimator.EstimatorSpec(mode=mode,
-    #                                                 loss=self.loss,
-    #                                                 train_op=train_op,
-    #                                                 eval_metric_ops=eval_metric_ops)
-    #     return estimator_spec
+    @staticmethod
+    def clip_grads(loss, variables=None):
+        if variables is None:
+            variables = tf.trainable_variables()
+        grads = tf.gradients(loss, variables)
+        clipped_grads, _ = tf.clip_by_global_norm(grads, CLIP_NORM)
+        return zip(clipped_grads, variables)
 
+    def evaluate(self, dataloader, sess, frac=1.0):
+        predictions = []
+        labels = []
 
-def clip_grads(loss):
-    params = tf.trainable_variables()
-    grads = tf.gradients(loss, params)
-    clipped_grads, _ = tf.clip_by_global_norm(grads, CLIP_NORM)
-    return zip(clipped_grads, params)
+        max_iters = len(dataloader) * frac
+        for i, (batch, label) in enumerate(dataloader):
+            print(i, max_iters)
+            if i >= max_iters:
+                break
+            feed_dict = {
+                self.input_vectors: batch,
+                self.labels: label,
+                self.dropout_prob: 0
+            }
+            preds, labs = sess.run([self.predictions, self.labels_int], feed_dict=feed_dict)
+            predictions += preds
+            labels += labs
+
+        res = {
+            'accuracy': accuracy_score(labels, predictions),
+            'f1': f1_score(labels, predictions)
+        }
+        return res
 
 
 def train():
     epochs = 2
     batch_size = 64
     dropout = 0.5
+    seq_len = 32
 
     writer = SummaryWriter(comment='_test')
+    print(list(writer.all_writers.keys())[0])
 
     print('Preparing datasets')
     train_dataset = MokoronDataset('../text_classification/data/mokoron/train.csv',
@@ -265,8 +269,8 @@ def train():
                                  'sentiment',
                                  return_vectors=False)
 
-    train_dataloader = DataLoader(train_dataset, batch_size, True, 'save/ruscorpora')
-    val_dataloader = DataLoader(val_dataset, batch_size, True, None)
+    train_dataloader = DataLoader(train_dataset, batch_size, True, 'save/ruscorpora', max_text_len=seq_len)
+    val_dataloader = DataLoader(val_dataset, batch_size, True, None, max_text_len=seq_len)
 
     # print('Building model')
 
@@ -274,23 +278,29 @@ def train():
 
     print('Starting training process')
     step = 0
+
+    rove_graph = tf.Graph()
+    rnn_graph = tf.Graph()
+
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
-    with tf.Session(config=config, graph=tf.Graph()) as sess:
-        # TODO: gradient-freeze rove
+
+    with tf.Session(config=config, graph=rnn_graph) as sess:
         train_dataloader.load_rove(sess)
+        tf.stop_gradient(train_dataloader.rove.model.target)
         val_dataloader.rove = train_dataloader.rove
 
-        model = RNN(sequence_length=128, num_classes=2, cell_type='sru', embeddings_size=300, hidden_size=128)
+        model = RNN(sequence_length=seq_len, num_classes=2, cell_type='sru', embeddings_size=300, hidden_size=128)
 
         global_step = tf.train.get_or_create_global_step()
         lr_op = tf.train.cosine_decay_restarts(1e-3, global_step, len(train_dataloader), t_mul=1.0)
 
         optimizer = tf.train.AdamOptimizer(lr_op)
-        gradients = clip_grads(model.loss)
+        gradients = model.clip_grads(model.loss)
 
         train_op = optimizer.apply_gradients(
             gradients, global_step=global_step
         )
+
 
         sess.run(tf.global_variables_initializer())
 
@@ -313,56 +323,15 @@ def train():
             # saver.save(sess, model_file_path)
 
             # evaluate
-            train_metrics = evaluate(model, val_dataloader, sess, frac=.1)
+            train_metrics = model.evaluate(val_dataloader, sess, frac=.1)
             writer.add_scalar('f1_train', train_metrics['f1'], step)
             writer.add_scalar('accuracy_train', train_metrics['accuracy'], step)
 
-            val_metrics = evaluate(model, val_dataloader, sess)
+            val_metrics = model.evaluate(val_dataloader, sess)
             writer.add_scalar('f1_val', val_metrics['f1'], step)
             writer.add_scalar('accuracy_val', val_metrics['accuracy'], step)
 
 
-def evaluate(model, dataloader, sess, frac=1.0):
-    # evaluate
-    predictions = []
-    labels = []
-
-    max_iters = len(dataloader) * frac
-    for i, (batch, label) in enumerate(dataloader):
-        if i >= max_iters:
-            break
-        feed_dict = {
-            model.input_vectors: batch,
-            model.labels: label,
-            model.dropout_prob: 0
-        }
-        preds, labs = sess.run([model.predictions, model.labels_int], feed_dict=feed_dict)
-        predictions += preds
-        labels += labs
-
-    res = {
-        'accuracy': accuracy_score(labels, predictions),
-        'f1': f1_score(labels, predictions)
-    }
-    return res
-
-
 if __name__ == '__main__':
-    # pass
-    # dataset = MokoronDataset('../text_classification/data/mokoron/train.csv',
-    #                          'text_spellchecked',
-    #                          'sentiment',
-    #                          'save/ruscorpora',
-    #                          return_vectors=False)
-    # _ = dataset[4]
-    # dataloader = DataLoader(dataset, 2, True, 'save/ruscorpora')
-    #
-    # config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
-    #
-    # model = RNN(sequence_length=128, num_classes=2, cell_type='sru', embeddings_size=300, hidden_size=128)
-    #
-    # with tf.Session(config=config, graph=tf.Graph()) as sess:
-    #     dataloader.load_rove(sess)
-    #     batch, label = next(dataloader)
-    #     pass
+    # from time import
     train()

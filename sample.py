@@ -89,8 +89,8 @@ class RoVeSampler:
         with open(os.path.join(model_dir, 'chars_vocab.pkl'), 'rb') as f:
             _, vocab = cPickle.load(f)
 
-        # saved_args.batch_size = 2
-        # saved_args.seq_length = 1
+        saved_args.batch_size = 64
+        saved_args.seq_length = 1
 
         if model_type == 'biLSTM':
             model = BiLSTM(saved_args, True)
@@ -107,26 +107,34 @@ class RoVeSampler:
         elif model_type == 'cnn_lstm':
             model = ConvLSTMModel(saved_args, True)
         else:
-            model = Model(saved_args, True)
+            model = Model(saved_args, False)
 
         self.model = model
         self.vocab = vocab
         self.sess = sess
         self.saver = tf.train.Saver(tf.all_variables())
         self.ckpt = tf.train.get_checkpoint_state(model_dir)
-        self.saver.restore(sess, self.ckpt.model_checkpoint_path)
+        if sess is not None:
+            self.saver.restore(sess, self.ckpt.model_checkpoint_path)
 
         assert self.ckpt and self.ckpt.model_checkpoint_path
 
-    def sample_multi(self, texts, pad=None):
+    def restore(self, sess):
+        self.sess = sess
+        self.saver.restore(sess, self.ckpt.model_checkpoint_path)
+
+    def sample_multi(self, texts_batch, pad=None):
         """
-        :param texts: list of strings
+        :param texts_batch: list of strings
         :param pad: if specified, pads vectors and returns numpy ndarray of size
-                    (batch_size=len(texts), seq_len=pad, vector_size)
-        :return: list of lists of numpy ndarrays or numpy ndarray if pad
+                     (batch_size=len(texts_batch), seq_len=pad, vector_size)
+        :return: list of lists of numpy ndarrays if not pad
+                  or numpy ndarray if pad
         """
+        if self.sess is None:
+            raise RuntimeError('get a not None session using .restore()')
         vectors = []
-        for text in texts:
+        for text in texts_batch:
             vector = self.model.valid_run(self.sess, self.vocab, text)
             vectors.append(vector)
 
@@ -135,18 +143,21 @@ class RoVeSampler:
 
         return vectors
 
-    def sample(self, texts_batch):
-        return self.model.sample(self.sess, self.vocab, texts_batch, len(texts_batch))
+    def sample(self, texts_batch, pad=None):
+        if self.sess is None:
+            raise RuntimeError('get a not None session using .restore()')
 
-    def _pad(self, vectors, pad_len):
+        return self.model.sample(self.sess, self.vocab, texts_batch, batch_size=len(texts_batch), pad=pad)
+
+    @staticmethod
+    def _pad(vectors, seq_len):
         """
         Zero pad the vectors
         :param vectors: list of lists of word vectors
-        :param pad_len: sequence length
+        :param seq_len: sequence length
         :return:
         """
         batch_size = len(vectors)
-        seq_len = pad_len
         vector_size = vectors[0][0].shape[0]
 
         padded = np.zeros([batch_size, seq_len, vector_size])
