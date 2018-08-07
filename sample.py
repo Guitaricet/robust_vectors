@@ -35,8 +35,8 @@ def sample(save_dir, phrase):
     model = StackedBiLstm(saved_args, True)
 
     with tf.Session() as sess:
-        tf.initialize_all_variables().run()
-        saver = tf.train.Saver(tf.all_variables())
+        tf.global_variables_initializer().run()
+        saver = tf.train.Saver(tf.global_variables())
         ckpt = tf.train.get_checkpoint_state(save_dir)
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(sess, ckpt.model_checkpoint_path)
@@ -69,8 +69,8 @@ def sample_multi(save_dir, data, model_type):
 
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
     with tf.Session(config=config) as sess:
-        tf.initialize_all_variables().run()
-        saver = tf.train.Saver(tf.all_variables())
+        tf.global_variables_initializer().run()
+        saver = tf.train.Saver(tf.global_variables())
         ckpt = tf.train.get_checkpoint_state(save_dir)
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(sess, ckpt.model_checkpoint_path)
@@ -112,7 +112,7 @@ class RoVeSampler:
         self.model = model
         self.vocab = vocab
         self.sess = sess
-        self.saver = tf.train.Saver(tf.all_variables())
+        self.saver = tf.train.Saver()
         self.ckpt = tf.train.get_checkpoint_state(model_dir)
         if sess is not None:
             self.saver.restore(sess, self.ckpt.model_checkpoint_path)
