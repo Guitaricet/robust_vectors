@@ -1,3 +1,4 @@
+import logging
 from random import random, choice
 
 import numpy as np
@@ -9,6 +10,25 @@ from tensorboardX import SummaryWriter
 
 from sru import SRUCell
 from sample import RoVeSampler
+
+
+logger = logging.getLogger()
+
+formatter = logging.Formatter(
+    '%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+    datefmt='%m-%d %H:%M'
+)
+
+fileHandler = logging.FileHandler('reccurent_classifier.log')
+fileHandler.setFormatter(formatter)
+logger.addHandler(fileHandler)
+
+consoleHandler = logging.StreamHandler()
+consoleHandler.setFormatter(formatter)
+logger.addHandler(consoleHandler)
+
+logger.setLevel(logging.INFO)
+
 
 CLIP_NORM = 0.1
 
@@ -217,9 +237,9 @@ def train():
     rove_type = 'sru'
 
     writer = SummaryWriter(comment='_test')
-    print(list(writer.all_writers.keys())[0])
+    logger.info('Writer: ', list(writer.all_writers.keys())[0])
 
-    print('Preparing datasets')
+    logger.info('Preparing datasets')
     train_dataset = MokoronDataset('../text_classification/data/mokoron/train.csv',
                                    text_field='text_spellchecked',
                                    label_field='sentiment')
@@ -230,11 +250,11 @@ def train():
     train_dataloader = DataLoader(train_dataset, batch_size, True)
     val_dataloader = DataLoader(val_dataset, batch_size, True)
 
-    # print('Building model')
+    # logger.info('Building model')
 
     # lth = tf.train.LoggingTensorHook({'tensor_to_log_name': tensor_to_log})
 
-    print('Starting training process')
+    logger.info('Starting training process')
 
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
     with tf.Session(config=config, graph=tf.Graph()) as sess:
@@ -244,7 +264,7 @@ def train():
         model = RNN(sequence_length=seq_len, num_classes=2, cell_type='sru', embeddings_size=300, hidden_size=128)
 
         global_step = tf.train.get_or_create_global_step()
-        lr_op = tf.train.cosine_decay_restarts(1e-4, global_step, len(train_dataloader), t_mul=1.0)
+        lr_op = tf.train.cosine_decay_restarts(1e-2, global_step, len(train_dataloader), t_mul=1.0)
 
         optimizer = tf.train.AdamOptimizer(lr_op)
         gradients = model.clip_grads(model.loss)
@@ -255,13 +275,13 @@ def train():
 
         sess.run(tf.global_variables_initializer())
 
-        step = 0
+        step = sess.run(global_step)
         for epoch in range(epochs):
-            print('Epoch ', epoch)
+            logger.info('Epoch ', epoch)
             for i, (batch, label) in enumerate(train_dataloader):
                 # if i > 100:
                 #     break
-                step += 1
+                step = sess.run(global_step)
 
                 batch = rove.sample(batch, pad=seq_len)
 
@@ -279,6 +299,7 @@ def train():
             # saver.save(sess, model_file_path)
 
             # evaluate
+            logger.info('Evaluating the model')
             train_metrics = model.evaluate(val_dataloader, sess, rove, pad=seq_len, frac=.1)
             writer.add_scalar('f1_train', train_metrics['f1'], step)
             writer.add_scalar('accuracy_train', train_metrics['accuracy'], step)
