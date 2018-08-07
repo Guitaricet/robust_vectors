@@ -83,13 +83,13 @@ def sample_multi(save_dir, data, model_type):
 
 
 class RoVeSampler:
-    def __init__(self, model_dir, model_type, sess):
+    def __init__(self, model_dir, model_type, sess, batch_size=64):
         with open(os.path.join(model_dir, 'config.pkl'), 'rb') as f:
             saved_args = cPickle.load(f)
         with open(os.path.join(model_dir, 'chars_vocab.pkl'), 'rb') as f:
             _, vocab = cPickle.load(f)
 
-        saved_args.batch_size = 64
+        saved_args.batch_size = batch_size
         saved_args.seq_length = 1
 
         if model_type == 'biLSTM':
@@ -121,6 +121,7 @@ class RoVeSampler:
 
     def restore(self, sess):
         self.sess = sess
+        print('Model checkpoint path: ', self.ckpt.model_checkpoint_path)
         self.saver.restore(sess, self.ckpt.model_checkpoint_path)
 
     def sample_multi(self, texts_batch, pad=None):

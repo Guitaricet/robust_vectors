@@ -35,21 +35,8 @@ class MokoronDataset:
                  filepath,
                  text_field,
                  label_field,
-                 rove_path=None,
-                 rove_type='sru',
-                 max_text_len=128,
                  alphabet=None,
-                 return_vectors=True):
-        """
-        :param filepath:
-        :param text_field:
-        :param label_field:
-        :param rove_path:
-        :param rove_type:
-        :param max_text_len:
-        :param alphabet:
-        :param return_vectors: if True, return rove; else return noised text
-        """
+                 max_text_length=128):
         self.alphabet = alphabet or ALPHABET
         self.text_field = text_field
         self.label_field = label_field
@@ -57,19 +44,12 @@ class MokoronDataset:
         assert self.label_field in self.data.columns
         self.label2int = {l: i for i, l in enumerate(sorted(self.data[self.label_field].unique()))}
         self.label_placeholder = np.zeros(len(self.label2int))
-        self.max_text_len = max_text_len
-        self.rove_path = rove_path
-        self.rove_type = rove_type
-        self.rove = None  # moved this to dataloader for batching
-        self.return_vectors = return_vectors
+        self.max_text_length = max_text_length
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        if self.rove is None and self.return_vectors:
-            raise RuntimeError('Call .load_rove() first')
-
         line = self.data.iloc[idx]
         text = line[self.text_field].lower()
         # for mokoron dataset we should remove smiles
@@ -80,13 +60,7 @@ class MokoronDataset:
         if self.noise_level > 0:
             text = self._noise_generator(text)
 
-        if self.return_vectors:
-            text = self.rove.sample_multi(text, pad=self.max_text_len)
-
         return text, label
-
-    def load_rove(self, sess):
-        self.rove = RoVeSampler(self.rove_path, self.rove_type, sess)
 
     def _noise_generator(self, string):
         noised = ""
@@ -99,7 +73,7 @@ class MokoronDataset:
 
 
 class DataLoader:
-    def __init__(self, dataset, batch_size, shuffle, rove_path, rove_type='sru', max_text_len=128):
+    def __init__(self, dataset, batch_size, shuffle):
         self.dataset = dataset
         self.batch_size = batch_size
         self.shuffle = shuffle
@@ -109,26 +83,10 @@ class DataLoader:
         if shuffle:
             self._shuffle()
 
-        self.rove = None
-        self.rove_path = rove_path
-        self.rove_type = rove_type
-        self.max_text_len = max_text_len
-        self.buffer = None  # for debug
-
-    def build_rove_graph(self):
-        self.rove = RoVeSampler(self.rove_path, self.rove_type, sess=None)
-
-    def load_rove(self, sess):
-        if self.rove is None:
-            self.build_rove_graph()
-        self.rove.restore(sess)
-
     def __len__(self):
         return len(self.dataset) // self.batch_size
 
     def __next__(self):
-        if self.rove is None:
-            raise RuntimeError('Call .load_rove() first')
         if self._batch_pointer * self.batch_size + self.batch_size >= len(self.dataset):
             raise StopIteration
 
@@ -141,8 +99,6 @@ class DataLoader:
             labels.append(y)
 
         self._batch_pointer += 1
-        self.buffer = batch
-        batch = self.rove.sample(batch, pad=self.max_text_len)
         return batch, labels
 
     def __iter__(self):
@@ -182,7 +138,8 @@ class RNN:
         self.last_output = self.h_outputs[:, -1, :]
         self.last_output = tf.layers.dropout(self.last_output, self.dropout_prob)
 
-        self.logits = tf.layers.dense(self.last_output, num_classes, kernel_initializer=tf.contrib.layers.xavier_initializer())
+        self.logits = tf.layers.dense(self.last_output, num_classes,
+                                      kernel_initializer=tf.contrib.layers.xavier_initializer())
         self.predictions = tf.argmax(self.logits, 1, name="predictions")
 
         # Calculate mean cross-entropy loss
@@ -209,7 +166,7 @@ class RNN:
         else:
             raise ValueError(cell_type)
 
-    # Length of the sequence data
+    # Lengths of the sequence data
     @staticmethod
     def _length(seq):
         relevant = tf.sign(tf.reduce_sum(tf.abs(seq), axis=2))
@@ -225,23 +182,23 @@ class RNN:
         clipped_grads, _ = tf.clip_by_global_norm(grads, CLIP_NORM)
         return zip(clipped_grads, variables)
 
-    def evaluate(self, dataloader, sess, frac=1.0):
+    def evaluate(self, dataloader, sess, rove, pad, frac=1.0):
         predictions = []
         labels = []
 
-        max_iters = len(dataloader) * frac
+        max_iters = int(len(dataloader) * frac)
         for i, (batch, label) in enumerate(dataloader):
-            print(i, max_iters)
             if i >= max_iters:
                 break
+            batch = rove.sample(batch, pad=pad)
             feed_dict = {
                 self.input_vectors: batch,
                 self.labels: label,
                 self.dropout_prob: 0
             }
             preds, labs = sess.run([self.predictions, self.labels_int], feed_dict=feed_dict)
-            predictions += preds
-            labels += labs
+            predictions += list(preds)
+            labels += list(labs)
 
         res = {
             'accuracy': accuracy_score(labels, predictions),
@@ -256,43 +213,38 @@ def train():
     dropout = 0.5
     seq_len = 32
 
+    rove_path = 'save/ruscorpora'
+    rove_type = 'sru'
+
     writer = SummaryWriter(comment='_test')
     print(list(writer.all_writers.keys())[0])
 
     print('Preparing datasets')
     train_dataset = MokoronDataset('../text_classification/data/mokoron/train.csv',
-                                   'text_spellchecked',
-                                   'sentiment',
-                                   return_vectors=False)
+                                   text_field='text_spellchecked',
+                                   label_field='sentiment')
     val_dataset = MokoronDataset('../text_classification/data/mokoron/validation.csv',
-                                 'text_spellchecked',
-                                 'sentiment',
-                                 return_vectors=False)
+                                 text_field='text_spellchecked',
+                                 label_field='sentiment')
 
-    train_dataloader = DataLoader(train_dataset, batch_size, True, 'save/ruscorpora', max_text_len=seq_len)
-    val_dataloader = DataLoader(val_dataset, batch_size, True, None, max_text_len=seq_len)
+    train_dataloader = DataLoader(train_dataset, batch_size, True)
+    val_dataloader = DataLoader(val_dataset, batch_size, True)
 
     # print('Building model')
 
     # lth = tf.train.LoggingTensorHook({'tensor_to_log_name': tensor_to_log})
 
     print('Starting training process')
-    step = 0
-
-    rove_graph = tf.Graph()
-    rnn_graph = tf.Graph()
 
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
-
-    with tf.Session(config=config, graph=rnn_graph) as sess:
-        train_dataloader.load_rove(sess)
-        tf.stop_gradient(train_dataloader.rove.model.target)
-        val_dataloader.rove = train_dataloader.rove
+    with tf.Session(config=config, graph=tf.Graph()) as sess:
+        rove = RoVeSampler(rove_path, rove_type, sess)
+        tf.stop_gradient(rove.model.target)
 
         model = RNN(sequence_length=seq_len, num_classes=2, cell_type='sru', embeddings_size=300, hidden_size=128)
 
         global_step = tf.train.get_or_create_global_step()
-        lr_op = tf.train.cosine_decay_restarts(1e-3, global_step, len(train_dataloader), t_mul=1.0)
+        lr_op = tf.train.cosine_decay_restarts(1e-4, global_step, len(train_dataloader), t_mul=1.0)
 
         optimizer = tf.train.AdamOptimizer(lr_op)
         gradients = model.clip_grads(model.loss)
@@ -301,13 +253,17 @@ def train():
             gradients, global_step=global_step
         )
 
-
         sess.run(tf.global_variables_initializer())
 
+        step = 0
         for epoch in range(epochs):
-            print(f'Epoch {epoch}')
-            for batch, label in train_dataloader:
+            print('Epoch ', epoch)
+            for i, (batch, label) in enumerate(train_dataloader):
+                # if i > 100:
+                #     break
                 step += 1
+
+                batch = rove.sample(batch, pad=seq_len)
 
                 feed_dict = {
                     model.input_vectors: batch,
@@ -323,15 +279,14 @@ def train():
             # saver.save(sess, model_file_path)
 
             # evaluate
-            train_metrics = model.evaluate(val_dataloader, sess, frac=.1)
+            train_metrics = model.evaluate(val_dataloader, sess, rove, pad=seq_len, frac=.1)
             writer.add_scalar('f1_train', train_metrics['f1'], step)
             writer.add_scalar('accuracy_train', train_metrics['accuracy'], step)
 
-            val_metrics = model.evaluate(val_dataloader, sess)
+            val_metrics = model.evaluate(val_dataloader, sess, rove, pad=seq_len)
             writer.add_scalar('f1_val', val_metrics['f1'], step)
             writer.add_scalar('accuracy_val', val_metrics['accuracy'], step)
 
 
 if __name__ == '__main__':
-    # from time import
     train()

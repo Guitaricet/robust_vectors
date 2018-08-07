@@ -28,7 +28,7 @@ logging.getLogger("tensorflow").setLevel(logging.WARNING)  # suppress tf use inf
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data-dir', type=str, default='data',
-                        help='data directory containing input.txt')
+                        help='data directory containing input.txt (plaintext)')
     parser.add_argument('--save-dir', type=str, default='save',
                         help='directory to store checkpointed models')
     parser.add_argument('--rnn-size', type=int, default=256,
@@ -52,7 +52,7 @@ def main():
     parser.add_argument('--decay-rate', type=float, default=0.97,
                         help='decay rate for rmsprop')
     parser.add_argument('--dropout-keep-prob', type=float, default=0.8,
-                        help='decay rate for rmsprop')
+                        help='dropout keep probability')
     parser.add_argument('--type', type=str, default=None,
                         help="""type of task
                                 1)para - paraphrase
@@ -177,6 +177,7 @@ def train(args):
     args.letter_size = data_loader.letter_size
     args.word_vocab_size = data_loader.word_vocab_size
 
+    os.makedirs(args.save_dir, exist_ok=True)
     with open(os.path.join(args.save_dir, 'config.pkl'), 'wb') as f:
         cPickle.dump(args, f)
     with open(os.path.join(args.save_dir, 'chars_vocab.pkl'), 'wb') as f:
