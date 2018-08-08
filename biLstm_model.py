@@ -21,13 +21,14 @@ class BiLSTM:
         for i in range(args.num_layers):
             # Forward direction cell
             with tf.variable_scope("forward" + str(i)):
-                if(args.model =="biSRU"):
+                if args.model == "biSRU":
                     cell_forw.append(SRUCell(args.rnn_size, state_is_tuple=False))
                 else:
                     cell_forw.append(rnn.BasicLSTMCell(args.rnn_size, forget_bias=1.0))
+
             # Backward direction cell
             with tf.variable_scope("backward" + str(i)):
-                if(args.model =="biSRU"):
+                if args.model == "biSRU":
                     cell_back.append(SRUCell(args.rnn_size, state_is_tuple=False))
                 else:
                     cell_back.append(rnn.BasicLSTMCell(args.rnn_size, forget_bias=1.0))
@@ -36,11 +37,13 @@ class BiLSTM:
         self.cell_bw = cell_back[0]
 
         self.input_data = tf.placeholder(tf.float32, [args.batch_size, args.seq_length, args.letter_size])
+        # self.batch_size = tf.shape(self.input_data)[0]  # TODO: use this to make variable batch size
+        self.batch_size = args.batch_size
 
-        self.initial_state_fw = self.cell_fw.zero_state(args.batch_size, tf.float32)
-        self.initial_state_bw = self.cell_bw.zero_state(args.batch_size, tf.float32)
+        self.initial_state_fw = self.cell_fw.zero_state(self.batch_size, tf.float32)
+        self.initial_state_bw = self.cell_bw.zero_state(self.batch_size, tf.float32)
 
-        self.change = tf.placeholder(tf.bool, [args.batch_size])
+        self.change = tf.placeholder(tf.bool, [self.batch_size])
 
         inputs = tf.split(self.input_data, args.seq_length, 1)
         inputs = [tf.squeeze(input_, [1]) for input_ in inputs]
@@ -55,16 +58,16 @@ class BiLSTM:
                 fixed_size_vectors.append(full_vector)
 
         fixed_input = tf.stack(fixed_size_vectors, axis=1)
-        fixed_input = tf.reshape(fixed_input, [self.args.batch_size, self.args.seq_length, -1])
+        fixed_input = tf.reshape(fixed_input, [self.batch_size, self.args.seq_length, -1])
 
         output = fixed_input
         with tf.variable_scope("lstm"):
             for n in range(self.args.num_layers):
                 cell_fw = cell_forw[n]
                 cell_bw = cell_back[n]
-                print(output.shape)
-                _initial_state_fw = cell_fw.zero_state(self.args.batch_size, tf.float32)
-                _initial_state_bw = cell_bw.zero_state(self.args.batch_size, tf.float32)
+                # print(output.shape)
+                _initial_state_fw = cell_fw.zero_state(self.batch_size, tf.float32)
+                _initial_state_bw = cell_bw.zero_state(self.batch_size, tf.float32)
 
                 (output_fw, output_bw), last_state = tf.nn.bidirectional_dynamic_rnn(cell_fw, cell_bw, output,
                                                                                      initial_state_fw=_initial_state_fw,
@@ -82,7 +85,7 @@ class BiLSTM:
         loss2 = tf.constant(0.0)
         final_vectors = []
 
-        ones = tf.diag([1.] * args.batch_size)
+        ones = tf.diag([1.] * self.batch_size)
         outputs = tf.unstack(outputs, axis=1)  # 1 - is sequence dim
 
         with tf.variable_scope("output_linear"):
@@ -98,8 +101,10 @@ class BiLSTM:
                 loss1 += tf.maximum(0.0, matrix)
                 final_vectors.append(output)
 
-        seq_slices = tf.reshape(tf.concat(final_vectors, 1), [args.batch_size, args.seq_length, args.w2v_size])
-        seq_slices = tf.split(seq_slices, args.batch_size, 0)
+        self.target = tf.reshape(tf.concat(final_vectors, 1),
+                                 [self.batch_size, args.seq_length, args.w2v_size],
+                                 name='target')
+        seq_slices = tf.split(self.target, self.batch_size, 0)
         seq_slices = [tf.squeeze(input_, [0]) for input_ in seq_slices]
         with tf.variable_scope("additional_loss"):
             for i in range(len(seq_slices)):  # should be length of batch_size
@@ -110,24 +115,20 @@ class BiLSTM:
                 matrix = tf.matmul(seq_context, seq_context, transpose_b=True)
                 loss2 += 1. - matrix
 
-        self.target = final_vectors[-1]
-        self.cost = tf.reduce_sum(loss1) / args.batch_size / args.seq_length
-        self.cost += tf.reduce_sum(loss2) / args.batch_size / args.seq_length
+        self.cost = tf.reduce_sum(loss1) / self.batch_size / args.seq_length
+        self.cost += tf.reduce_sum(loss2) / self.batch_size / args.seq_length
         self.lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
-        grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars), args.grad_clip) #aggregation_method=
-                                                                    #tf.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N)
+        grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars), args.grad_clip)
 
         optimizer = tf.train.AdamOptimizer(self.lr)
         self.train_op = optimizer.apply_gradients(zip(grads, tvars))
+
         # Validation eval : TODO add None size to placeholders
         self.valid_data = tf.placeholder(tf.float32, [1, 1, args.letter_size])
 
         self.valid_initial_state_fw = self.cell_fw.zero_state(1, tf.float32)
         self.valid_initial_state_bw = self.cell_bw.zero_state(1, tf.float32)
-
-        valid_initial_state_fw = self.initial_state_fw
-        valid_initial_state_bw = self.initial_state_bw
 
         valid_inputs = tf.split(self.valid_data, 1, 1)
         valid_inputs = [tf.squeeze(input_, [1]) for input_ in valid_inputs]
@@ -232,47 +233,29 @@ class BiLSTM:
     #
     #     return targets
 
-    def sample(self, sess, vocab, prime_batch=' ', batch_size=1):
+    def sample(self, sess, vocab, prime_batch=' ', batch_size=1, pad=128):
         self.initial_state_fw = tf.convert_to_tensor(self.cell_fw.zero_state(batch_size, tf.float32))
         self.initial_state_bw = tf.convert_to_tensor(self.cell_bw.zero_state(batch_size, tf.float32))
-        tokens = []
-        for i in prime_batch:
-            tokens.append(word_tokenize(i))
-        targets = []
-        data = []
-        max_seq = 157
-        data_arr = np.zeros((batch_size, max_seq, 833))
-        for i, token in enumerate(tokens):
-            if len(token) > max_seq:
-                token = token[:max_seq]
-            sentence_vecs = []
-            for t in token:
+        max_seq = pad
+        data = np.zeros((batch_size, max_seq, 7*len(vocab)))
+        for i, _sent in enumerate(prime_batch):
+            sent = word_tokenize(_sent)
+            if len(sent) > max_seq:
+                sent = sent[:max_seq]
+            sent_vecs = []
+            for t in sent:
                 x = letters2vec(t, vocab).reshape((1, 1, -1))
-                sentence_vecs.append(x)
+                sent_vecs.append(x)
 
-            # data.append(np.array(sentence_vecs))
-            data_arr[i] = sentence_vecs
+            data[i, :len(sent_vecs)] = sent_vecs
 
-
-        data = np.array(data_arr.reshape(max_seq,batch_size,-1))
-        state_fw = self.initial_state_fw.eval()
-        state_bw = self.initial_state_bw.eval()
-        target_vectors = []
-
-        for word_batch in data :
-            # x = letters2vec(token, vocab).reshape((1, 1, -1))
-            feed = {self.input_data: np.expand_dims(word_batch, 1),
-                    self.initial_state_fw: state_fw,
-                    self.initial_state_bw: state_bw,
-                    self.change: np.zeros((batch_size,))
-                    }
-            [last_state, target] = sess.run([self.final_state, self.target], feed)
-            state_fw = last_state[0]
-            state_bw = last_state[1]
-            word_vec = target
-            target_vectors.append(word_vec)
-        target_vectors= np.array(target_vectors)
-        return target_vectors.reshape(batch_size, max_seq, -1)
+        feed = {
+            self.input_data: data,
+            self.initial_state_fw: self.initial_state_fw.eval(),
+            self.initial_state_bw: self.initial_state_bw.eval()
+        }
+        target_vectors = sess.run(self.target, feed)
+        return target_vectors
 
 
 class StackedBiLstm:

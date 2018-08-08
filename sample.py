@@ -5,7 +5,7 @@ import os
 from six.moves import cPickle
 
 from cnn_lstm_model import ConvLSTMModel
-from model import Model
+from rnn_model import RNNModel
 from biLstm_model import BiLSTM, StackedBiLstm
 from conv_model import Conv3LayerModel, Conv6LayerModel, Conv1d3Layer
 from tqdm import tqdm
@@ -65,7 +65,7 @@ def sample_multi(save_dir, data, model_type):
     elif model_type == 'cnn_lstm':
         model = ConvLSTMModel(saved_args, True)
     else:
-        model = Model(saved_args, True)
+        model = RNNModel(saved_args, True)
 
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
     with tf.Session(config=config) as sess:
@@ -83,32 +83,35 @@ def sample_multi(save_dir, data, model_type):
 
 
 class RoVeSampler:
-    def __init__(self, model_dir, model_type, sess, batch_size=64):
+    def __init__(self, model_dir, model_type, sess, batch_size=64, seq_len=32):
         with open(os.path.join(model_dir, 'config.pkl'), 'rb') as f:
             saved_args = cPickle.load(f)
         with open(os.path.join(model_dir, 'chars_vocab.pkl'), 'rb') as f:
             _, vocab = cPickle.load(f)
 
         saved_args.batch_size = batch_size
-        saved_args.seq_length = 1
+        saved_args.seq_length = seq_len
+
+        infer = False  # for seqlen != 1
 
         if model_type == 'biLSTM':
-            model = BiLSTM(saved_args, True)
+            model = BiLSTM(saved_args, infer)
         elif model_type == 'biSRU':
-            model = BiLSTM(saved_args, True)
+            model = BiLSTM(saved_args, infer)
         elif model_type == 'stackBiLstm':
-            model = StackedBiLstm(saved_args, True)
+            model = StackedBiLstm(saved_args, infer)
         elif model_type == 'cnn3layers':
-            model = Conv3LayerModel(saved_args, True)
+            model = Conv3LayerModel(saved_args, infer)
         elif model_type == 'conv1d':
-            model = Conv1d3Layer(saved_args, True)
+            model = Conv1d3Layer(saved_args, infer)
         elif model_type == 'cnn6layers':
-            model = Conv6LayerModel(saved_args, True)
+            model = Conv6LayerModel(saved_args, infer)
         elif model_type == 'cnn_lstm':
-            model = ConvLSTMModel(saved_args, True)
+            model = ConvLSTMModel(saved_args, infer)
         else:
-            model = Model(saved_args, False)
+            model = RNNModel(saved_args, infer)
 
+        self.seq_len = seq_len
         self.model = model
         self.vocab = vocab
         self.sess = sess
@@ -148,6 +151,8 @@ class RoVeSampler:
         if self.sess is None:
             raise RuntimeError('get a not None session using .restore()')
 
+        if pad is None:
+            pad = self.seq_len
         return self.model.sample(self.sess, self.vocab, texts_batch, batch_size=len(texts_batch), pad=pad)
 
     @staticmethod

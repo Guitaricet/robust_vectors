@@ -7,3 +7,4 @@ sklearn
 bs4
 tqdm
 catboost
+colored-traceback

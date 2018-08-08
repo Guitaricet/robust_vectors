@@ -9,7 +9,7 @@ pip install -r requirements.txt
 
 ## Training
 ```bash
-python train.py --data-dir data/brown --save-dir save/brown --model sru
+python train.py --data-dir data/brown --save-dir save/brown --model biSRU
 ```
 Where data/brown should contain input.txt (plaintext file) and (optionally) valid.txt for validation checks during training
 (it structure depends on --type parameter).

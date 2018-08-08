@@ -1,7 +1,9 @@
 import os
+import re
 import logging
 from random import random, choice
 
+import colored_traceback.auto
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -36,6 +38,7 @@ CLIP_NORM = 5
 # TODO: dataloader use rove vocab(?)
 
 ALPHABET = ['<UNK>', '\n'] + [s for s in """ abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'’’/\|_@#$%ˆ&* ̃‘+-=<>()[]{}"""]
+ALPHABET = [t for t in ALPHABET if t not in ('(', ')')]
 
 
 class IMDBDataset:
@@ -74,7 +77,8 @@ class MokoronDataset:
         text = line[self.text_field].lower()
         # for mokoron dataset we should remove smiles
         if ')' not in self.alphabet:
-            text = [t for t in text if t not in ('(', ')')]
+            text = re.sub('[()]', '', text)
+
         label = self.label2int[line[self.label_field]]
 
         if self.noise_level > 0:
@@ -149,7 +153,12 @@ class RNN:
 
         # Recurrent Neural Network
         with tf.variable_scope('rnn'):
-            rnn_input = tf.layers.dense(self.input_vectors, hidden_size, name='linear', activation=tf.nn.relu)
+            rnn_input_layer = tf.layers.Dense(hidden_size, activation=tf.nn.relu, name='linear')
+            rnn_input = rnn_input_layer.apply(self.input_vectors)
+
+            tf.summary.histogram('rnn_input_linear', rnn_input_layer.weights[0])
+            tf.summary.histogram('rnn_input_linear_bias', rnn_input_layer.weights[1])
+
             cell = self._get_cell(hidden_size, cell_type)
             self.h_outputs, _ = tf.nn.dynamic_rnn(cell=cell,
                                                   inputs=rnn_input,
@@ -160,10 +169,14 @@ class RNN:
             self.last_output = tf.layers.dropout(self.last_output, self.dropout_prob)
 
         with tf.variable_scope('outputs'):
-            self.logits = tf.layers.dense(self.last_output, num_classes,
-                                          kernel_initializer=tf.contrib.layers.xavier_initializer(),
-                                          name='logits')
+            logits_layer = tf.layers.Dense(num_classes,
+                                           kernel_initializer=tf.contrib.layers.xavier_initializer(),
+                                           name='logits')
+            self.logits = logits_layer.apply(self.last_output)
             self.predictions = tf.argmax(self.logits, 1, name='predictions')
+
+            tf.summary.histogram('logits', logits_layer.weights[0])
+            tf.summary.histogram('logits_bias', logits_layer.weights[1])
 
             # Calculate mean cross-entropy loss
             losses = tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.logits, labels=labels_one_hot)
@@ -171,11 +184,23 @@ class RNN:
 
         with tf.variable_scope('metrics'):
             self.labels_int = tf.argmax(labels_one_hot, axis=1)
-            self.accuracy = tf.metrics.accuracy(self.labels_int, self.predictions, name='accuracy')
-            self.precision = tf.metrics.precision(self.labels_int, self.predictions, name='precision')
-            self.recall = tf.metrics.recall(self.labels_int, self.predictions, name='recall')
+            accuracy, self.accuracy_op = tf.metrics.accuracy(self.labels_int, self.predictions, name='accuracy')
+            precision, self.precision_op = tf.metrics.precision(self.labels_int, self.predictions, name='precision')
+            recall, self.recall_op = tf.metrics.recall(self.labels_int, self.predictions, name='recall')
             # self.f1 = 2 * self.precision * self.recall / (self.precision + self.recall)
             # see https://stackoverflow.com/a/50251763 for multilabel f1 score in tf
+            self.metrics_ops = tf.group(self.accuracy_op, self.precision_op, self.recall_op)
+
+        self.accuracy = accuracy  # for debug
+        tf.summary.scalar('loss', self.loss)
+
+        streaming_metrics_key = 'streaming_metrics'
+        acc = tf.summary.scalar('accuracy_streaming', accuracy, collections=[streaming_metrics_key])
+        pre = tf.summary.scalar('precision_streaming', precision, collections=[streaming_metrics_key])
+        rec = tf.summary.scalar('recall_streaming', recall, collections=[streaming_metrics_key])
+
+        self.summary = tf.summary.merge_all()
+        self.metrics_summary = tf.summary.merge([acc, pre, rec])
 
     @staticmethod
     def _get_cell(hidden_size, cell_type):
@@ -240,12 +265,13 @@ def train():
     batch_size = 64
     dropout = 0.5
     seq_len = 32
+    save_model_path = 'save/classifier/mokoron'
 
-    rove_path = 'save/ruscorpora'
-    rove_type = 'sru'
+    rove_path = 'save/ruscorpora_bisru'
+    rove_type = 'biSRU'
 
-    writer = SummaryWriter(comment='_test_constantlr_nogradclip')
-    logger.info(f'Writer: {list(writer.all_writers.keys())[0]}')
+    writer_name = 'runs/Aug_08/mokoron'
+    writer = SummaryWriter(writer_name + '/X', comment='_test')
 
     logger.info('Preparing datasets')
     train_dataset = MokoronDataset('../text_classification/data/mokoron/train.csv',
@@ -267,16 +293,13 @@ def train():
 
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
     with tf.Session(config=config, graph=rnn_graph) as sess:
-        rove = RoVeSampler(rove_path, rove_type, sess)
+        rove = RoVeSampler(rove_path, rove_type, sess, batch_size=batch_size, seq_len=seq_len)
 
-        tf.stop_gradient(rove.model.target)  # freeze rove
-
-        model = RNN(sequence_length=seq_len, num_classes=2, cell_type='lstm', embeddings_size=300, hidden_size=128)
-
+        model = RNN(sequence_length=seq_len, num_classes=2, cell_type='sru', embeddings_size=300, hidden_size=128)
         global_step = tf.train.get_or_create_global_step()
-        # lr_op = tf.train.cosine_decay_restarts(1e-2, global_step, len(train_dataloader), t_mul=1.0)
+        # lr_op = tf.train.cosine_decay_restarts(1e-3, global_step, len(train_dataloader), t_mul=1.0)
 
-        optimizer = tf.train.AdamOptimizer(1e-2)
+        optimizer = tf.train.AdamOptimizer(1e-3)
 
         if False:  # for debug
             gradients = model.clip_grads(model.loss)
@@ -288,7 +311,12 @@ def train():
             train_op = optimizer.minimize(model.loss, global_step=global_step)
 
         saver = tf.train.Saver()
+
         sess.run(tf.global_variables_initializer())
+        sess.run(tf.local_variables_initializer())
+
+        sw = tf.summary.FileWriter(writer_name + '_train', sess.graph)
+        sw_val = tf.summary.FileWriter(writer_name + '_val', sess.graph)
 
         for epoch in range(epochs):
             logger.info(f'Epoch {epoch}')
@@ -296,8 +324,9 @@ def train():
                 # if i > 100:
                 #     break
                 step = sess.run(global_step)
+                sess.run(tf.local_variables_initializer())
 
-                batch = rove.sample(batch, pad=seq_len)
+                batch = rove.sample(batch)
 
                 feed_dict = {
                     model.input_vectors: batch,
@@ -306,25 +335,76 @@ def train():
                 }
                 # summary, _ = sess.run([summary, train_op], feed_dict=feed_dict)
                 # self.train_writer.add_summary(summary)
-                loss, _ = sess.run([model.loss, train_op], feed_dict=feed_dict)
-                writer.add_scalar('loss', loss, step)
+                loss, summary, _ = sess.run([model.loss, model.summary, train_op], feed_dict=feed_dict)
+                sw.add_summary(summary, step)
 
-                if step % 1000 == 1:
-                    save_model_path = 'save/classifier/mokoron'
-                    os.makedirs(save_model_path, exist_ok=True)
-                    saver.save(sess, save_model_path)
+                if step % 50 == 0:
+                    evaluate(model, val_dataloader, sess, rove, sw_val, step)
+                    evaluate(model, train_dataloader, sess, rove, sw, step)
 
-                    # evaluate
-                    logger.info('Evaluating the model')
-                    train_metrics = model.evaluate(val_dataloader, sess, rove, pad=seq_len, frac=.05)
-                    writer.add_scalar('f1_train', train_metrics['f1'], step)
-                    writer.add_scalar('accuracy_train', train_metrics['accuracy'], step)
+            # checkpoint
+            os.makedirs(save_model_path, exist_ok=True)
+            saver.save(sess, save_model_path)
 
-                    val_metrics = model.evaluate(val_dataloader, sess, rove, pad=seq_len, frac=0.25)
-                    writer.add_scalar('f1_val', val_metrics['f1'], step)
-                    writer.add_scalar('accuracy_val', val_metrics['accuracy'], step)
-        logger.info('Training is finished')
+            # evaluate
+            logger.info('Model evaluation')
+            train_metrics = model.evaluate(val_dataloader, sess, rove, pad=seq_len, frac=0.05)
+            writer.add_scalar('f1_train', train_metrics['f1'], step)
+            writer.add_scalar('accuracy_train', train_metrics['accuracy'], step)
+
+            val_metrics = model.evaluate(val_dataloader, sess, rove, pad=seq_len, frac=0.25)
+            writer.add_scalar('f1_val', val_metrics['f1'], step)
+            writer.add_scalar('accuracy_val', val_metrics['accuracy'], step)
+
+            logger.info('Training is finished')
+
+
+def evaluate(model, dataloader, sess, rove, sw, step, iters=3):
+    sess.run(tf.local_variables_initializer())
+    for j, (batch, label) in enumerate(dataloader):
+        if j >= iters:
+            break
+        batch = rove.sample(batch)
+
+        feed_dict = {
+            model.input_vectors: batch,
+            model.labels: label,
+            model.dropout_prob: 0
+        }
+        sess.run(model.metrics_ops, feed_dict=feed_dict)
+    summ = sess.run(model.metrics_summary)
+    sw.add_summary(summ, step)
 
 
 if __name__ == '__main__':
+    # from time import time
+    # epochs = 2
+    # batch_size = 64
+    # dropout = 0.5
+    # seq_len = 32
+    #
+    # rove_path = 'save/ruscorpora_bisru'
+    # rove_type = 'biSRU'
+    #
+    # dataset = MokoronDataset('../text_classification/data/mokoron/train.csv',
+    #                          'text_spellchecked',
+    #                          'sentiment')
+    # _ = dataset[4]
+    # dataloader = DataLoader(dataset, batch_size, True)
+    #
+    # config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
+    #
+    # model = RNN(sequence_length=128, num_classes=2, cell_type='sru', embeddings_size=300, hidden_size=128)
+    #
+    # with tf.Session(config=config, graph=tf.Graph()) as sess:
+    #     rove = RoVeSampler(rove_path, rove_type, sess, batch_size=batch_size, seq_len=seq_len)
+    #     sess.run(tf.global_variables_initializer())
+    #     _time = time()
+    #     for i, (batch, label) in enumerate(dataloader):
+    #         rove.sample(batch)
+    #         print(time() - _time)
+    #         _time = time()
+    #         if i > 10:
+    #             break
+    #     pass
     train()

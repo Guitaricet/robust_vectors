@@ -17,7 +17,7 @@ from tqdm import tqdm
 from biLstm_model import BiLSTM, StackedBiLstm
 from cnn_lstm_model import ConvLSTMModel
 from conv_model import Conv3LayerModel, Conv6LayerModel, Conv1d3Layer
-from model import Model
+from rnn_model import RNNModel
 from sentiment_sampling import linear_svm
 from utils import TextLoader, noise_generator
 
@@ -205,7 +205,7 @@ def train(args):
         model = ConvLSTMModel(args)
         train_one_forward_model(model, data_loader, args, ckpt)
     else:
-        model = Model(args)
+        model = RNNModel(args)
         train_one_forward_model(model, data_loader, args, ckpt)
 
 
@@ -355,43 +355,48 @@ def train_bidirectional_model(model, data_loader, args, ckpt):
                     #     continue
                     # Validation
                     print("Validation")
-                    if args.type != 'sentiment':
-                        if args.type == 'para':
-                            valid_data, true_labels = get_validate_phrases(args)
-                        if args.type == 'entail':
-                            valid_data, true_labels = get_validate_entailment(args)
-                        vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
-                        vectors = np.zeros((len(valid_data), vector.shape[0]))
-                        vectors[0, :] = vector
-                        for i in tqdm(range(1, len(valid_data))):
-                            vectors[i, :] = np.mean(model.valid_run(sess, saved_vocab, valid_data[i]), axis=0)
-                        valid_results = np.vsplit(vectors,len(valid_data))
-                        pred = []
-                        for i in range(0, len(valid_results), 2):
-                            v1 = valid_results[i]
-                            v2 = valid_results[i + 1]
-                            pred.append(1 - cosine(v1, v2))
-                            if math.isnan(pred[-1]):
-                                pred[-1] = 0.5
-                        roc_auc_validation_score = roc_auc_score(true_labels, pred)
-                    if (args.type == 'sentiment'):
-                        valid_data, true_labels = get_data_for_sentiment(args)
-                        vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
-                        vectors = np.zeros((len(valid_data), vector.shape[0]))
-                        vectors[0, :] = vector
-                        for i in tqdm(range(1, len(valid_data))):
-                            vectors[i, :] = np.mean(model.valid_run(sess, saved_vocab, valid_data[i]), axis=0)
-                        valid_results = np.squeeze(np.vsplit(vectors, len(valid_data)))
-                        idx_tosplit = int(0.2 * len(valid_results))
-                        valid_train = valid_results[idx_tosplit:]
-                        valid_test = valid_results[:idx_tosplit]
-                        train_label = true_labels[idx_tosplit:]
-                        test_label = true_labels[:idx_tosplit]
-                        roc_auc_validation_score = linear_svm(valid_train, valid_test, train_label, test_label)
-                    print("="*30)
-                    print("RocAuc at epoch %d: %f" % (e, roc_auc_validation_score))
-                    print("="*30)
-                    logging.info("RocAuc at step %d and epoch %d : %f"%( step, e, roc_auc_validation_score))
+                    if args.type is not None:
+                        if args.type != 'sentiment':
+                            if args.type == 'para':
+                                valid_data, true_labels = get_validate_phrases(args)
+                            if args.type == 'entail':
+                                valid_data, true_labels = get_validate_entailment(args)
+                            vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
+                            vectors = np.zeros((len(valid_data), vector.shape[0]))
+                            vectors[0, :] = vector
+                            for i in tqdm(range(1, len(valid_data))):
+                                vectors[i, :] = np.mean(model.valid_run(sess, saved_vocab, valid_data[i]), axis=0)
+                            valid_results = np.vsplit(vectors,len(valid_data))
+                            pred = []
+                            for i in range(0, len(valid_results), 2):
+                                v1 = valid_results[i]
+                                v2 = valid_results[i + 1]
+                                pred.append(1 - cosine(v1, v2))
+                                if math.isnan(pred[-1]):
+                                    pred[-1] = 0.5
+                            roc_auc_validation_score = roc_auc_score(true_labels, pred)
+                        if args.type == 'sentiment':
+                            valid_data, true_labels = get_data_for_sentiment(args)
+                            vector = np.mean(model.valid_run(sess, saved_vocab, valid_data[0]), axis=0)
+                            vectors = np.zeros((len(valid_data), vector.shape[0]))
+                            vectors[0, :] = vector
+                            for i in tqdm(range(1, len(valid_data))):
+                                vectors[i, :] = np.mean(model.valid_run(sess, saved_vocab, valid_data[i]), axis=0)
+                            valid_results = np.squeeze(np.vsplit(vectors, len(valid_data)))
+                            idx_tosplit = int(0.2 * len(valid_results))
+                            valid_train = valid_results[idx_tosplit:]
+                            valid_test = valid_results[:idx_tosplit]
+                            train_label = true_labels[idx_tosplit:]
+                            test_label = true_labels[:idx_tosplit]
+                            roc_auc_validation_score = linear_svm(valid_train, valid_test, train_label, test_label)
+                        print("="*30)
+                        print("RocAuc at epoch %d: %f" % (e, roc_auc_validation_score))
+                        print("="*30)
+                        logging.info("RocAuc at step %d and epoch %d : %f" % (step, e, roc_auc_validation_score))
+                    else:
+                        warning_message = 'No validation is performed due to non-specified --type parameter'
+                        print(warning_message)
+                        logging.warning(warning_message)
 
         checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=args.num_epochs * data_loader.num_batches)

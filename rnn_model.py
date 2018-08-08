@@ -11,7 +11,7 @@ rnn = tf.contrib.rnn
 
 
 # TODO rename
-class Model:
+class RNNModel:
     def __init__(self, args, infer=False):
         self.args = args
         if infer:
@@ -73,8 +73,10 @@ class Model:
                 loss1 += tf.maximum(0.0, matrix)
                 final_vectors.append(output)
 
-        seq_slices = tf.reshape(tf.concat(final_vectors, 1), [args.batch_size, args.seq_length, args.w2v_size])
-        seq_slices = tf.split(seq_slices, args.batch_size, 0)
+        self.target = tf.reshape(tf.concat(final_vectors, 1),
+                                 [args.batch_size, args.seq_length, args.w2v_size],
+                                 name='target')
+        seq_slices = tf.split(self.target, args.batch_size, 0)
         seq_slices = [tf.squeeze(input_, [0]) for input_ in seq_slices]
         with tf.variable_scope("additional_loss"):
             for i in range(len(seq_slices)):  # should be length of batch_size
@@ -85,8 +87,6 @@ class Model:
                 matrix = tf.matmul(seq_context, seq_context, transpose_b=True)
                 loss2 += 1. - matrix
 
-        self.target = final_vectors[-1]
-        tf.add_to_collection('target', self.target)
         self.cost = tf.reduce_sum(loss1) / args.batch_size / args.seq_length
         self.cost += tf.reduce_sum(loss2) / args.batch_size / args.seq_length
         self.final_state = last_state

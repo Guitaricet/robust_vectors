@@ -179,7 +179,6 @@ class ConvLSTMModel:
             conv2 = tf.nn.conv2d(h1, W, strides=[1, 1, 2, 1], padding="SAME", name="conv2valid")
             h2 = tf.nn.relu(tf.nn.bias_add(conv2, b), name="relu2")
 
-
         with tf.name_scope("valid_cnn_3"):
             filter_shape = [1, filters_size[2], 1024, 1024]
             W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.05), name="W")
