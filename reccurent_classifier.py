@@ -2,8 +2,10 @@ import os
 import re
 import logging
 from random import random, choice
+from datetime import datetime
 
 import colored_traceback.auto
+from comet_ml import Experiment
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -13,6 +15,9 @@ from tensorboardX import SummaryWriter
 from sru import SRUCell
 from sample import RoVeSampler
 
+with open('comet.apikey') as f:
+    apikey = f.read()
+experiment = Experiment(api_key=apikey, project_name='rove_classifier')
 
 logger = logging.getLogger()
 
@@ -32,8 +37,6 @@ logger.addHandler(consoleHandler)
 logger.setLevel(logging.INFO)
 
 
-CLIP_NORM = 5
-
 # TODO: remove smiles from mokoron
 # TODO: dataloader use rove vocab(?)
 
@@ -52,14 +55,15 @@ class MokoronDataset:
     Alphabet should be the same as at RoVe train
     Can be used only in tf.session
     """
-    noise_level = 0
 
     def __init__(self,
                  filepath,
                  text_field,
                  label_field,
                  alphabet=None,
-                 max_text_length=128):
+                 max_text_length=128,
+                 noise_level=0):
+        self.noise_level = noise_level
         self.alphabet = alphabet or ALPHABET
         self.text_field = text_field
         self.label_field = label_field
@@ -261,16 +265,34 @@ class RNN:
 
 
 def train():
-    epochs = 2
-    batch_size = 64
+    epochs = 10
+    batch_size = 256
     dropout = 0.5
     seq_len = 32
+    lr = 1e-3
+    use_annealing = False 
+    use_gradclip = False
+    gradclip_norm = 5
+    rnn_size = 256
     save_model_path = 'save/classifier/mokoron'
+
+    hyperparams = {'epochs': epochs,
+                   'dropout': dropout,
+                   'learning_rate': lr,
+                   'use_annealing': use_annealing,
+                   'use_gradclip': use_gradclip,
+                   'gradclip_norm': gradclip_norm,
+                   'rnn_size': rnn_size,
+                   'batch_size': batch_size}
+
+    experiment.log_multiple_params(hyperparams)
 
     rove_path = 'save/ruscorpora_bisru'
     rove_type = 'biSRU'
 
-    writer_name = 'runs/Aug_08/mokoron'
+    current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+
+    writer_name = f'runs/{current_time}/mokoron'
     writer = SummaryWriter(writer_name + '/X', comment='_test')
 
     logger.info('Preparing datasets')
@@ -283,6 +305,7 @@ def train():
 
     train_dataloader = DataLoader(train_dataset, batch_size, True)
     val_dataloader = DataLoader(val_dataset, batch_size, True)
+    # experiment.log_dataset_hash(train_dataloader)
 
     logger.info('Building graph')
     rnn_graph = tf.Graph()
@@ -295,13 +318,15 @@ def train():
     with tf.Session(config=config, graph=rnn_graph) as sess:
         rove = RoVeSampler(rove_path, rove_type, sess, batch_size=batch_size, seq_len=seq_len)
 
-        model = RNN(sequence_length=seq_len, num_classes=2, cell_type='sru', embeddings_size=300, hidden_size=128)
+        model = RNN(sequence_length=seq_len, num_classes=2, cell_type='sru', embeddings_size=300, hidden_size=rnn_size)
         global_step = tf.train.get_or_create_global_step()
-        # lr_op = tf.train.cosine_decay_restarts(1e-3, global_step, len(train_dataloader), t_mul=1.0)
+        if use_annealing:
+            lr_op = tf.train.cosine_decay_restarts(lr, global_step, len(train_dataloader), t_mul=1.0)
+            optimizer = tf.train.AdamOptimizer(lr_op)
+        else:
+            optimizer = tf.train.AdamOptimizer(lr)
 
-        optimizer = tf.train.AdamOptimizer(1e-3)
-
-        if False:  # for debug
+        if use_gradclip:
             gradients = model.clip_grads(model.loss)
 
             train_op = optimizer.apply_gradients(
@@ -337,11 +362,13 @@ def train():
                 # self.train_writer.add_summary(summary)
                 loss, summary, _ = sess.run([model.loss, model.summary, train_op], feed_dict=feed_dict)
                 sw.add_summary(summary, step)
+                experiment.set_step(step)
+                experiment.log_metric('loss', loss)
 
-                if step % 50 == 0:
-                    evaluate(model, val_dataloader, sess, rove, sw_val, step)
-                    evaluate(model, train_dataloader, sess, rove, sw, step)
-
+                if step % 100 == 0:
+                    acc_val = evaluate(model, val_dataloader, sess, rove, sw_val, step)
+                    acc_train = evaluate(model, train_dataloader, sess, rove, sw, step)
+                    experiment.log_multiple_metrics({'accuracy_train': acc_train, 'accuracy_val': acc_val})
             # checkpoint
             os.makedirs(save_model_path, exist_ok=True)
             saver.save(sess, save_model_path)
@@ -355,11 +382,12 @@ def train():
             val_metrics = model.evaluate(val_dataloader, sess, rove, pad=seq_len, frac=0.25)
             writer.add_scalar('f1_val', val_metrics['f1'], step)
             writer.add_scalar('accuracy_val', val_metrics['accuracy'], step)
+            experiment.log_epoch_end(epoch, step)
 
-            logger.info('Training is finished')
+        logger.info('Training is finished')
 
 
-def evaluate(model, dataloader, sess, rove, sw, step, iters=3):
+def evaluate(model, dataloader, sess, rove, sw, step, iters=5):
     sess.run(tf.local_variables_initializer())
     for j, (batch, label) in enumerate(dataloader):
         if j >= iters:
@@ -372,8 +400,19 @@ def evaluate(model, dataloader, sess, rove, sw, step, iters=3):
             model.dropout_prob: 0
         }
         sess.run(model.metrics_ops, feed_dict=feed_dict)
-    summ = sess.run(model.metrics_summary)
+    acc, summ = sess.run([model.accuracy, model.metrics_summary])
     sw.add_summary(summ, step)
+    return acc
+
+
+def noise_experiment():
+    # TODO: speed up
+    # TODO: make it analogous to pytorch text_classification
+    noise_levels = []
+    for noise in noise_levels:
+        train()
+        for _ in range(10):
+            ... # eval trained model
 
 
 if __name__ == '__main__':
