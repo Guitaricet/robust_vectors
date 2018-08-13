@@ -205,37 +205,17 @@ class BiLSTM:
             targets.append(np.squeeze(target))
         return targets
 
-    # def sample(self, sess, vocab, prime=' '):
-    #     """
-    #     :param sess: tf session
-    #     :param vocab: char vocabulary
-    #     :param prime: text
-    #
-    #     :return: sequence of robust word vectors
-    #     """
-    #     self.initial_state_fw = tf.convert_to_tensor(self.cell_fw.zero_state(1, tf.float32))
-    #     self.initial_state_bw = tf.convert_to_tensor(self.cell_bw.zero_state(1, tf.float32))
-    #     state_fw = self.initial_state_fw.eval()
-    #     state_bw = self.initial_state_bw.eval()
-    #     tokens = word_tokenize(prime)
-    #     targets = []
-    #     for token in tokens:
-    #         x = letters2vec(token, vocab).reshape((1, 1, -1))
-    #         feed = {self.input_data: x,
-    #                 self.initial_state_fw: state_fw,
-    #                 self.initial_state_bw: state_bw,
-    #                 self.change: np.zeros((1,))
-    #                 }
-    #         [last_state, target] = sess.run([self.final_state, self.target], feed)
-    #         state_fw = last_state[0]
-    #         state_bw = last_state[1]
-    #         targets.append(np.squeeze(target))
-    #
-    #     return targets
+    def sample(self, sess, vocab, prime_batch, batch_size=1, pad=128):
+        """
+        :param sess: tf session
+        :param vocab: char vocabulary
+        :param prime_batch: list of strings
 
-    def sample(self, sess, vocab, prime_batch=' ', batch_size=1, pad=128):
+        :return: sequence of robust word vectors
+        """
         self.initial_state_fw = tf.convert_to_tensor(self.cell_fw.zero_state(batch_size, tf.float32))
         self.initial_state_bw = tf.convert_to_tensor(self.cell_bw.zero_state(batch_size, tf.float32))
+
         max_seq = pad
         data = np.zeros((batch_size, max_seq, 7*len(vocab)))
         for i, _sent in enumerate(prime_batch):
