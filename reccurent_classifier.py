@@ -371,7 +371,7 @@ def train(epochs=10,
             logger.info(f'Epoch {epoch}')
             for i, (batch, label) in enumerate(train_dataloader):
                 _batch_time = time()
-                if i*epoch > max_iters:
+                if i * (epoch+1) > max_iters:
                     logger.warning('Exited training loop due to max_iters rule')
                     exit_iteration_flag = True
                     break
@@ -400,6 +400,8 @@ def train(epochs=10,
                     experiment.log_multiple_metrics({'accuracy_train': acc_train,
                                                      'accuracy_val': acc_val,
                                                      'accuracy_val_original_data': acc_val_orig})
+                    logger.info(f'Val: {acc_val}')
+
             # checkpoint
             os.makedirs(save_model_path, exist_ok=True)
             saver.save(sess, save_model_path)
