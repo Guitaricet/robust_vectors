@@ -36,7 +36,7 @@ class BiLSTM:
         self.cell_fw = cell_forw[0]
         self.cell_bw = cell_back[0]
 
-        self.input_data = tf.placeholder(tf.float32, [args.batch_size, args.seq_length, args.letter_size])
+        self.input_data = tf.placeholder(tf.float32, [args.batch_size, args.seq_length, args.letter_size], name='Placeholder:0')
         # self.batch_size = tf.shape(self.input_data)[0]  # TODO: use this to make variable batch size
         self.batch_size = args.batch_size
 

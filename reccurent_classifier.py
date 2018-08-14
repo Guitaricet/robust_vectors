@@ -4,18 +4,23 @@ import logging
 from time import time
 from random import random, choice
 from datetime import datetime
+from six.moves import cPickle
 
 import colored_traceback.auto
 from comet_ml import Experiment
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from sklearn.metrics import f1_score, accuracy_score
-from tensorboardX import SummaryWriter
+
 from tqdm import tqdm
+from tensorboardX import SummaryWriter
+from nltk.tokenize import word_tokenize
+from sklearn.metrics import f1_score, accuracy_score
 
 from sru import SRUCell
+from utils import letters2vec
 from sample import RoVeSampler
+
 
 with open('comet.apikey') as f:
     apikey = f.read()
@@ -59,6 +64,7 @@ class MokoronDataset:
                  filepath,
                  text_field,
                  label_field,
+                 vocab,
                  alphabet=None,
                  max_text_length=128,
                  noise_level=0.0):
@@ -71,6 +77,7 @@ class MokoronDataset:
         self.label2int = {l: i for i, l in enumerate(sorted(self.data[self.label_field].unique()))}
         self.label_placeholder = np.zeros(len(self.label2int))
         self.max_text_length = max_text_length
+        self.vocab = vocab
 
     def __len__(self):
         return len(self.data)
@@ -97,6 +104,19 @@ class MokoronDataset:
             if random() < self.noise_level:
                 noised += choice(self.alphabet)
         return noised
+
+    def _preprocess(self, text):
+        tokens = word_tokenize(text)
+        if len(tokens) > self.max_text_length:
+            tokens = tokens[:self.max_text_length]
+        tokens_vecs = []
+        for t in tokens:
+            x = letters2vec(t, self.vocab).reshape((1, 1, -1))
+            tokens_vecs.append(x)
+
+        tokens_vecs = np.ndarray(tokens_vecs)
+        assert tokens_vecs.shape == (self.max_text_length, 7*len(self.vocab))
+        return tokens_vecs
 
 
 class DataLoader:
@@ -126,6 +146,9 @@ class DataLoader:
             labels.append(y)
 
         self._batch_pointer += 1
+
+        batch = np.ndarray(batch)
+        assert batch.shape[0] == self.batch_size
         return batch, labels
 
     def __iter__(self):
@@ -144,12 +167,15 @@ class DataLoader:
 # based on github.com/roomylee/rnn-text-classification-tf
 class RNN:
     def __init__(self, sequence_length, num_classes,
-                 cell_type, embeddings_size, hidden_size):
+                 cell_type, embeddings_size, hidden_size, input_tensor=None):
 
         with tf.variable_scope('placeholder'):
             self.input_vectors = tf.placeholder(tf.float32, shape=[None, sequence_length, embeddings_size], name='input_vectors')
             self.labels = tf.placeholder(tf.int32, shape=[None], name='labels')
             self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
+
+        if input_tensor is not None:
+            self.input_vectors = input_tensor
 
         labels_one_hot = tf.one_hot(self.labels, num_classes)
         text_length = self._length(self.input_vectors)
@@ -193,7 +219,6 @@ class RNN:
             # see https://stackoverflow.com/a/50251763 for multilabel f1 score in tf
             self.metrics_ops = tf.group(self.accuracy_op, self.precision_op, self.recall_op)
 
-        self.accuracy = accuracy  # for debug
         tf.summary.scalar('loss', self.loss)
 
         streaming_metrics_key = 'streaming_metrics'
@@ -235,7 +260,7 @@ class RNN:
         clipped_grads, _ = tf.clip_by_global_norm(grads, clip_norm)
         return zip(clipped_grads, variables)
 
-    def evaluate(self, dataloader, sess, rove, pad, frac=1.0):
+    def evaluate(self, dataloader, sess, rove_input, frac=1.0):
         """
         This function is needed because tf.metrics does not support multiclass weighted f1
         """
@@ -246,9 +271,8 @@ class RNN:
         for i, (batch, label) in enumerate(dataloader):
             if i >= max_iters:
                 break
-            batch = rove.sample(batch, pad=pad)
             feed_dict = {
-                self.input_vectors: batch,
+                rove_input: batch,
                 self.labels: label,
                 self.dropout_prob: 0
             }
@@ -293,13 +317,14 @@ def train(epochs=10,
     experiment.log_multiple_params(hyperparams)
 
     rove_path = 'save/ruscorpora_bisru'
-    rove_type = 'biSRU'
+    with open(os.path.join(rove_path, 'chars_vocab.pkl'), 'rb') as f:
+        _, vocab = cPickle.load(f)
 
     save_results_path = 'results/%s_%s.csv' % ('rove', 'mokoron')
-    if os.path.exists(save_results_path):
-        if input('File at path %s already exists, delete it? (y/n)' % save_results_path).lower() != 'y':
-            logger.warning('Cancelling execution due to existing output file')
-            exit(1)
+    # if os.path.exists(save_results_path):
+    #     if input('File at path %s already exists, delete it? (y/n)' % save_results_path).lower() != 'y':
+    #         logger.warning('Cancelling execution due to existing output file')
+    #         exit(1)
 
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
 
@@ -311,14 +336,17 @@ def train(epochs=10,
     train_dataset = MokoronDataset('../text_classification/data/mokoron/train.csv',
                                    text_field='text_spellchecked',
                                    label_field='sentiment',
+                                   vocab=vocab,
                                    noise_level=noise_level)
     val_dataset = MokoronDataset('../text_classification/data/mokoron/validation.csv',
                                  text_field='text_spellchecked',
                                  label_field='sentiment',
+                                 vocab=vocab,
                                  noise_level=noise_level)
     val_original_dataset = MokoronDataset('../text_classification/data/mokoron/validation.csv',
                                           text_field='text_original',
                                           label_field='sentiment',
+                                          vocab=vocab,
                                           noise_level=0)
 
     train_dataloader = DataLoader(train_dataset, batch_size, True)
@@ -327,17 +355,27 @@ def train(epochs=10,
     # experiment.log_dataset_hash(train_dataloader)
 
     logger.info('Building graph')
-    rnn_graph = tf.Graph()
+    graph = tf.Graph()
 
-    # lth = tf.train.LoggingTensorHook({'tensor_to_log_name': tensor_to_log})
+    with graph.as_default():
+        ckpt = tf.train.get_checkpoint_state(rove_path)
+        saver = tf.train.import_meta_graph(ckpt.model_checkpoint_path+'.meta')
+        rove_input = graph.get_tensor_by_name('Placeholder:0')
+        rove_output = graph.get_tensor_by_name('target:0')
+        tf.stop_gradient(rove_output)
+        model = RNN(sequence_length=seq_len,
+                    num_classes=2,
+                    cell_type='sru',
+                    embeddings_size=300,
+                    hidden_size=rnn_size,
+                    input_tensor=rove_output)
 
     logger.info('Starting training process')
 
     config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.25))
-    with tf.Session(config=config, graph=rnn_graph) as sess:
-        rove = RoVeSampler(rove_path, rove_type, sess, batch_size=batch_size, seq_len=seq_len)
+    with tf.Session(config=config, graph=graph) as sess:
+        saver.restore(sess, ckpt.model_checkpoint_path)
 
-        model = RNN(sequence_length=seq_len, num_classes=2, cell_type='sru', embeddings_size=300, hidden_size=rnn_size)
         global_step = tf.train.get_or_create_global_step()
         if use_annealing:
             lr_op = tf.train.cosine_decay_restarts(lr, global_step, len(train_dataloader), t_mul=1.0)
@@ -376,13 +414,12 @@ def train(epochs=10,
                     exit_iteration_flag = True
                     break
 
-                step = sess.run(global_step)
                 sess.run(tf.local_variables_initializer())
+                step = sess.run(global_step)
 
-                batch = rove.sample(batch)
                 experiment.log_metric('rove_batch_time', time() - _batch_time)
                 feed_dict = {
-                    model.input_vectors: batch,
+                    rove_input: batch,  # TODO: preprocess batch in dataset
                     model.labels: label,
                     model.dropout_prob: dropout
                 }
@@ -394,9 +431,9 @@ def train(epochs=10,
                 experiment.log_metric('batch_time', time() - _batch_time)
 
                 if step % 100 == 0:
-                    acc_val = evaluate(model, val_dataloader, sess, rove, sw_val, step)
-                    acc_train = evaluate(model, train_dataloader, sess, rove, sw, step)
-                    acc_val_orig = evaluate(model, val_original_dataloader, sess, rove, sw_val_orig, step)
+                    acc_val = evaluate(model, val_dataloader, sess, rove_input, sw_val, step)
+                    acc_train = evaluate(model, train_dataloader, sess, rove_input, sw, step)
+                    acc_val_orig = evaluate(model, val_original_dataloader, sess, rove_input, sw_val_orig, step)
                     experiment.log_multiple_metrics({'accuracy_train': acc_train,
                                                      'accuracy_val': acc_val,
                                                      'accuracy_val_original_data': acc_val_orig})
@@ -408,11 +445,11 @@ def train(epochs=10,
 
             # evaluate
             logger.info('Model evaluation')
-            train_metrics = model.evaluate(val_dataloader, sess, rove, pad=seq_len, frac=0.05)
+            train_metrics = model.evaluate(val_dataloader, sess, rove_input, frac=0.05)
             writer.add_scalar('f1_train', train_metrics['f1'], step)
             writer.add_scalar('accuracy_train', train_metrics['accuracy'], step)
 
-            val_metrics = model.evaluate(val_dataloader, sess, rove, pad=seq_len, frac=0.25)
+            val_metrics = model.evaluate(val_dataloader, sess, rove_input, frac=0.25)
             writer.add_scalar('f1_val', val_metrics['f1'], step)
             writer.add_scalar('accuracy_val', val_metrics['accuracy'], step)
             experiment.log_epoch_end(epoch, step)
@@ -423,10 +460,12 @@ def train(epochs=10,
     test_dataset = MokoronDataset('../text_classification/data/mokoron/test.csv',
                                   text_field='text_spellchecked',
                                   label_field='sentiment',
+                                  vocab=vocab,
                                   noise_level=noise_level)
     test_original_dataset = MokoronDataset('../text_classification/data/mokoron/test.csv',
                                            text_field='text_original',
                                            label_field='sentiment',
+                                           vocab=vocab,
                                            noise_level=0)
 
     test_dataloader = DataLoader(test_dataset, batch_size, True)
@@ -435,7 +474,7 @@ def train(epochs=10,
     # acc_test,f1_test,noise_level_test,model_type,noise_level_train,acc_train,f1_train
     results = []
     for _ in tqdm(range(10), leave=False):  # 10 times for statistics
-        test_metrics = model.evaluate(test_dataloader, sess, rove, pad=seq_len)
+        test_metrics = model.evaluate(test_dataloader, sess, rove_input)
         writer.add_scalar('f1_test', test_metrics['f1'], step)
         writer.add_scalar('accuracy_test', test_metrics['accuracy'], step)
 
@@ -445,7 +484,7 @@ def train(epochs=10,
                         'model_type': 'rove_rnn',
                         'noise_level_train': noise_level})
 
-    test_metrics = model.evaluate(test_original_dataloader, sess, rove, pad=seq_len)
+    test_metrics = model.evaluate(test_original_dataloader, sess, rove_input)
     writer.add_scalar('f1_test', test_metrics['f1'], step)
     writer.add_scalar('accuracy_test', test_metrics['accuracy'], step)
 
@@ -455,7 +494,13 @@ def train(epochs=10,
                     'model_type': 'rove_rnn',
                     'noise_level_train': noise_level})
     os.makedirs(os.path.dirname(save_results_path), exist_ok=True)
-    pd.DataFrame(results).to_csv(save_results_path)
+    if os.path.exists(save_results_path):
+        old_results = pd.read_csv(save_results_path)
+    else:
+        old_results = pd.DataFrame()
+    
+    results_df = pd.concat([old_results, pd.DataFrame(results)], sort=False)
+    results_df.to_csv(save_results_path, index=False)
 
 
 def evaluate(model, dataloader, sess, rove, sw, step, iters=5):
