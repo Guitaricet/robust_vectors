@@ -22,9 +22,9 @@ from utils import letters2vec
 from sample import RoVeSampler
 
 
-with open('comet.apikey') as f:
-    apikey = f.read()
-experiment = Experiment(api_key=apikey, project_name='rove_classifier', auto_metric_logging=False, disabled=True)
+# with open('comet.apikey') as f:
+#     apikey = f.read()
+# experiment = Experiment(api_key=apikey, project_name='rove_classifier', auto_metric_logging=False, disabled=True)
 
 logger = logging.getLogger()
 
@@ -291,7 +291,7 @@ class RNN:
 
 def train(epochs=10,
           lr=1e-3,
-          batch_size=256,
+          batch_size=64,
           rnn_size=256,
           dropout=0.5,
           seq_len=32,
@@ -314,9 +314,9 @@ def train(epochs=10,
     if use_gradclip:
         hyperparams['gradclip_norm'] = gradclip_norm
 
-    experiment.log_multiple_params(hyperparams)
+#    experiment.log_multiple_params(hyperparams)
 
-    rove_path = 'save/ruscorpora_bisru'
+    rove_path = 'save'
     with open(os.path.join(rove_path, 'chars_vocab.pkl'), 'rb') as f:
         _, vocab = cPickle.load(f)
 
@@ -333,19 +333,19 @@ def train(epochs=10,
     writer = SummaryWriter(writer_name + '/X', comment='_test')
 
     logger.info('Preparing datasets')
-    train_dataset = MokoronDataset('../text_classification/data/mokoron/train.csv',
+    train_dataset = MokoronDataset('data/mokoron/train.csv',
                                    text_field='text_spellchecked',
                                    label_field='sentiment',
                                    vocab=vocab,
                                    noise_level=noise_level,
                                    max_text_length=seq_len)
-    val_dataset = MokoronDataset('../text_classification/data/mokoron/validation.csv',
+    val_dataset = MokoronDataset('data/mokoron/validation.csv',
                                  text_field='text_spellchecked',
                                  label_field='sentiment',
                                  vocab=vocab,
                                  noise_level=noise_level,
                                  max_text_length=seq_len)
-    val_original_dataset = MokoronDataset('../text_classification/data/mokoron/validation.csv',
+    val_original_dataset = MokoronDataset('data/mokoron/validation.csv',
                                           text_field='text_original',
                                           label_field='sentiment',
                                           vocab=vocab,
@@ -363,7 +363,7 @@ def train(epochs=10,
     with graph.as_default():
         ckpt = tf.train.get_checkpoint_state(rove_path)
         saver = tf.train.import_meta_graph(ckpt.model_checkpoint_path+'.meta')
-        rove_input = graph.get_tensor_by_name('Placeholder:0')
+        rove_input = graph.get_tensor_by_name('input:0')
         rove_output = graph.get_tensor_by_name('target:0')
         tf.stop_gradient(rove_output)
         model = RNN(sequence_length=seq_len,
@@ -422,7 +422,7 @@ def train(epochs=10,
                 sess.run(tf.local_variables_initializer())
                 step = sess.run(global_step)
 
-                experiment.log_metric('rove_batch_time', time() - _batch_time)
+                #experiment.log_metric('rove_batch_time', time() - _batch_time)
                 feed_dict = {
                     rove_input: batch,  # TODO: preprocess batch in dataset
                     model.labels: label,
@@ -430,18 +430,18 @@ def train(epochs=10,
                 }
                 loss, summary, _ = sess.run([model.loss, model.summary, train_op], feed_dict=feed_dict)
                 sw.add_summary(summary, step)
-                experiment.set_step(step)
-                experiment.log_metric('loss', loss)
+                #experiment.set_step(step)
+                #experiment.log_metric('loss', loss)
 
-                experiment.log_metric('batch_time', time() - _batch_time)
+                #experiment.log_metric('batch_time', time() - _batch_time)
 
                 if step % 100 == 0:
                     acc_val = evaluate(model, val_dataloader, sess, rove_input, sw_val, step)
                     acc_train = evaluate(model, train_dataloader, sess, rove_input, sw, step)
                     acc_val_orig = evaluate(model, val_original_dataloader, sess, rove_input, sw_val_orig, step)
-                    experiment.log_multiple_metrics({'accuracy_train': acc_train,
-                                                     'accuracy_val': acc_val,
-                                                     'accuracy_val_original_data': acc_val_orig})
+                    #experiment.log_multiple_metrics({'accuracy_train': acc_train,
+                                                     #'accuracy_val': acc_val,
+                                                     #'accuracy_val_original_data': acc_val_orig})
                     logger.info(f'Val: {acc_val}')
 
             # checkpoint
@@ -457,7 +457,7 @@ def train(epochs=10,
             val_metrics = model.evaluate(val_dataloader, sess, rove_input, frac=0.25)
             writer.add_scalar('f1_val', val_metrics['f1'], step)
             writer.add_scalar('accuracy_val', val_metrics['accuracy'], step)
-            experiment.log_epoch_end(epoch, step)
+            #experiment.log_epoch_end(epoch, step)
 
         logger.info('Training is finished')
 

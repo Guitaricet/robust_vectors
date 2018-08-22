@@ -1,6 +1,6 @@
 numpy
 pandas
-tensorflow
+tensorflow-gpu
 scipy
 nltk
 sklearn
@@ -8,3 +8,7 @@ bs4
 tqdm
 catboost
 colored-traceback
+gensim
+keras
+tensorboardx
+comet_ml
