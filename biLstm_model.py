@@ -36,16 +36,17 @@ class BiLSTM:
         self.cell_fw = cell_forw[0]
         self.cell_bw = cell_back[0]
 
-        self.input_data = tf.placeholder(tf.float32, [args.batch_size, args.seq_length, args.letter_size], name='Placeholder:0')
-        # self.batch_size = tf.shape(self.input_data)[0]  # TODO: use this to make variable batch size
-        self.batch_size = args.batch_size
+        self.input_data = tf.placeholder(tf.float32, [None, None, args.letter_size], name='input')
+        input_shape = tf.shape(self.input_data)
+        self.batch_size = input_shape[0]
+        self.seq_length = input_shape[1]
 
         self.initial_state_fw = self.cell_fw.zero_state(self.batch_size, tf.float32)
         self.initial_state_bw = self.cell_bw.zero_state(self.batch_size, tf.float32)
 
-        self.change = tf.placeholder(tf.bool, [self.batch_size])
+        # self.change = tf.placeholder(tf.bool, [self.batch_size])
 
-        inputs = tf.split(self.input_data, args.seq_length, 1)
+        inputs = tf.split(self.input_data, self.seq_length, 1)
         inputs = [tf.squeeze(input_, [1]) for input_ in inputs]
 
         with tf.variable_scope("input_linear"):
@@ -58,7 +59,7 @@ class BiLSTM:
                 fixed_size_vectors.append(full_vector)
 
         fixed_input = tf.stack(fixed_size_vectors, axis=1)
-        fixed_input = tf.reshape(fixed_input, [self.batch_size, self.args.seq_length, -1])
+        fixed_input = tf.reshape(fixed_input, [self.batch_size, self.seq_length, -1])
 
         output = fixed_input
         with tf.variable_scope("lstm"):
@@ -102,7 +103,7 @@ class BiLSTM:
                 final_vectors.append(output)
 
         self.target = tf.reshape(tf.concat(final_vectors, 1),
-                                 [self.batch_size, args.seq_length, args.w2v_size],
+                                 [self.batch_size, self.seq_length, args.w2v_size],
                                  name='target')
         seq_slices = tf.split(self.target, self.batch_size, 0)
         seq_slices = [tf.squeeze(input_, [0]) for input_ in seq_slices]
@@ -115,8 +116,8 @@ class BiLSTM:
                 matrix = tf.matmul(seq_context, seq_context, transpose_b=True)
                 loss2 += 1. - matrix
 
-        self.cost = tf.reduce_sum(loss1) / self.batch_size / args.seq_length
-        self.cost += tf.reduce_sum(loss2) / self.batch_size / args.seq_length
+        self.cost = tf.reduce_sum(loss1) / self.batch_size / self.seq_length
+        self.cost += tf.reduce_sum(loss2) / self.batch_size / self.seq_length
         self.lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
         grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars), args.grad_clip)

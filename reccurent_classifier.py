@@ -24,7 +24,7 @@ from sample import RoVeSampler
 
 with open('comet.apikey') as f:
     apikey = f.read()
-experiment = Experiment(api_key=apikey, project_name='rove_classifier', auto_metric_logging=False)
+experiment = Experiment(api_key=apikey, project_name='rove_classifier', auto_metric_logging=False, disabled=True)
 
 logger = logging.getLogger()
 
@@ -94,6 +94,8 @@ class MokoronDataset:
         if self.noise_level > 0:
             text = self._noise_generator(text)
 
+        text = self._preprocess(text)
+
         return text, label
 
     def _noise_generator(self, string):
@@ -106,16 +108,14 @@ class MokoronDataset:
         return noised
 
     def _preprocess(self, text):
+        tokens_vecs = np.zeros((self.max_text_length, 7*len(self.vocab)))
         tokens = word_tokenize(text)
         if len(tokens) > self.max_text_length:
             tokens = tokens[:self.max_text_length]
-        tokens_vecs = []
-        for t in tokens:
+        for i, t in enumerate(tokens):
             x = letters2vec(t, self.vocab).reshape((1, 1, -1))
-            tokens_vecs.append(x)
+            tokens_vecs[i] = x
 
-        tokens_vecs = np.ndarray(tokens_vecs)
-        assert tokens_vecs.shape == (self.max_text_length, 7*len(self.vocab))
         return tokens_vecs
 
 
@@ -147,7 +147,7 @@ class DataLoader:
 
         self._batch_pointer += 1
 
-        batch = np.ndarray(batch)
+        batch = np.array(batch)
         assert batch.shape[0] == self.batch_size
         return batch, labels
 
@@ -337,17 +337,20 @@ def train(epochs=10,
                                    text_field='text_spellchecked',
                                    label_field='sentiment',
                                    vocab=vocab,
-                                   noise_level=noise_level)
+                                   noise_level=noise_level,
+                                   max_text_length=seq_len)
     val_dataset = MokoronDataset('../text_classification/data/mokoron/validation.csv',
                                  text_field='text_spellchecked',
                                  label_field='sentiment',
                                  vocab=vocab,
-                                 noise_level=noise_level)
+                                 noise_level=noise_level,
+                                 max_text_length=seq_len)
     val_original_dataset = MokoronDataset('../text_classification/data/mokoron/validation.csv',
                                           text_field='text_original',
                                           label_field='sentiment',
                                           vocab=vocab,
-                                          noise_level=0)
+                                          noise_level=0,
+                                          max_text_length=seq_len)
 
     train_dataloader = DataLoader(train_dataset, batch_size, True)
     val_dataloader = DataLoader(val_dataset, batch_size, True)
@@ -377,20 +380,22 @@ def train(epochs=10,
         saver.restore(sess, ckpt.model_checkpoint_path)
 
         global_step = tf.train.get_or_create_global_step()
-        if use_annealing:
-            lr_op = tf.train.cosine_decay_restarts(lr, global_step, len(train_dataloader), t_mul=1.0)
-            optimizer = tf.train.AdamOptimizer(lr_op)
-        else:
-            optimizer = tf.train.AdamOptimizer(lr)
 
-        if use_gradclip:
-            gradients = model.clip_grads(model.loss, gradclip_norm)
+        with tf.variable_scope('not_adam'):  # crutch
+            if use_annealing:
+                lr_op = tf.train.cosine_decay_restarts(lr, global_step, len(train_dataloader), t_mul=1.0)
+                optimizer = tf.train.AdamOptimizer(lr_op)
+            else:
+                optimizer = tf.train.AdamOptimizer(lr)
 
-            train_op = optimizer.apply_gradients(
-                gradients, global_step=global_step
-            )
-        else:
-            train_op = optimizer.minimize(model.loss, global_step=global_step)
+            if use_gradclip:
+                gradients = model.clip_grads(model.loss, gradclip_norm)
+
+                train_op = optimizer.apply_gradients(
+                    gradients, global_step=global_step
+                )
+            else:
+                train_op = optimizer.minimize(model.loss, global_step=global_step)
 
         saver = tf.train.Saver()
 
@@ -461,12 +466,14 @@ def train(epochs=10,
                                   text_field='text_spellchecked',
                                   label_field='sentiment',
                                   vocab=vocab,
-                                  noise_level=noise_level)
+                                  noise_level=noise_level,
+                                  max_text_length=seq_len)
     test_original_dataset = MokoronDataset('../text_classification/data/mokoron/test.csv',
                                            text_field='text_original',
                                            label_field='sentiment',
                                            vocab=vocab,
-                                           noise_level=0)
+                                           noise_level=0,
+                                           max_text_length=seq_len)
 
     test_dataloader = DataLoader(test_dataset, batch_size, True)
     test_original_dataloader = DataLoader(test_original_dataset, batch_size, True)
@@ -522,7 +529,6 @@ def evaluate(model, dataloader, sess, rove, sw, step, iters=5):
 
 
 def noise_experiment():
-    # TODO: speed up
     noise_levels = []
     for noise_level in noise_levels:
         train(noise_level=noise_level)
