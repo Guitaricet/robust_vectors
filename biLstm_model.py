@@ -16,6 +16,9 @@ class BiLSTM:
             args.batch_size = 1
             args.seq_length = 1
 
+        self.change = tf.placeholder_with_default(tf.constant(False, tf.bool, (args.batch_size,)),
+                                                  (args.batch_size,))
+
         cell_forw = []
         cell_back = []
         for i in range(args.num_layers):
@@ -37,9 +40,8 @@ class BiLSTM:
         self.cell_bw = cell_back[0]
 
         self.input_data = tf.placeholder(tf.float32, [None, None, args.letter_size], name='input')
-        input_shape = tf.shape(self.input_data)
-        self.batch_size = input_shape[0]
-        self.seq_length = input_shape[1]
+        self.batch_size = args.batch_size
+        self.seq_length = args.seq_length
 
         self.initial_state_fw = self.cell_fw.zero_state(self.batch_size, tf.float32)
         self.initial_state_bw = self.cell_bw.zero_state(self.batch_size, tf.float32)
@@ -59,7 +61,7 @@ class BiLSTM:
                 fixed_size_vectors.append(full_vector)
 
         fixed_input = tf.stack(fixed_size_vectors, axis=1)
-        fixed_input = tf.reshape(fixed_input, [self.batch_size, self.seq_length, -1])
+        # fixed_input = tf.reshape(fixed_input, [self.batch_size, self.seq_length, -1])
 
         output = fixed_input
         with tf.variable_scope("lstm"):

@@ -37,9 +37,9 @@ def main():
                         help='number of layers in the RNN')
     parser.add_argument('--model', type=str, default='lstm',
                         help='cnn, rnn, stackBiLstm, biLSTM, gru, or lstm')
-    parser.add_argument('--batch-size', type=int, default=64,
+    parser.add_argument('--batch-size', dest='batch_size', type=int, default=64,
                         help='minibatch size')
-    parser.add_argument('--seq-length', type=int, default=8,
+    parser.add_argument('--seq-length', dest='seq_length', type=int, default=8,
                         help='RNN sequence length')
     parser.add_argument('--num-epochs', type=int, default=1,
                         help='number of epochs')
