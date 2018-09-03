@@ -19,7 +19,6 @@ from sklearn.metrics import f1_score, accuracy_score
 
 from sru import SRUCell
 from utils import letters2vec
-from sample import RoVeSampler
 
 
 with open('comet.apikey') as f:
@@ -291,7 +290,7 @@ class RNN:
 
 def train(epochs=10,
           lr=1e-3,
-          batch_size=256,
+          batch_size=64,
           rnn_size=256,
           dropout=0.5,
           seq_len=32,
@@ -299,7 +298,7 @@ def train(epochs=10,
           use_gradclip=False,
           gradclip_norm=5,
           noise_level=0.05,
-          max_iters=2000,
+          max_iters=2500,
           save_model_path='save/classifier/mokoron'):
 
     hyperparams = {'epochs': epochs,
@@ -310,7 +309,9 @@ def train(epochs=10,
                    'rnn_size': rnn_size,
                    'batch_size': batch_size,
                    'noise_level': noise_level,
-                   'seq_len': seq_len}
+                   'seq_len': seq_len,
+                   'max_iters': max_iters}
+
     if use_gradclip:
         hyperparams['gradclip_norm'] = gradclip_norm
 
@@ -321,10 +322,6 @@ def train(epochs=10,
         _, vocab = cPickle.load(f)
 
     save_results_path = 'results/%s_%s.csv' % ('rove', 'mokoron')
-    # if os.path.exists(save_results_path):
-    #     if input('File at path %s already exists, delete it? (y/n)' % save_results_path).lower() != 'y':
-    #         logger.warning('Cancelling execution due to existing output file')
-    #         exit(1)
 
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
 
@@ -351,11 +348,24 @@ def train(epochs=10,
                                           vocab=vocab,
                                           noise_level=0,
                                           max_text_length=seq_len)
+    test_dataset = MokoronDataset('../text_classification/data/mokoron/test.csv',
+                                  text_field='text_spellchecked',
+                                  label_field='sentiment',
+                                  vocab=vocab,
+                                  noise_level=noise_level,
+                                  max_text_length=seq_len)
+    test_original_dataset = MokoronDataset('../text_classification/data/mokoron/test.csv',
+                                           text_field='text_original',
+                                           label_field='sentiment',
+                                           vocab=vocab,
+                                           noise_level=0,
+                                           max_text_length=seq_len)
 
     train_dataloader = DataLoader(train_dataset, batch_size, True)
     val_dataloader = DataLoader(val_dataset, batch_size, True)
     val_original_dataloader = DataLoader(val_original_dataset, batch_size, True)
-    # experiment.log_dataset_hash(train_dataloader)
+    test_dataloader = DataLoader(test_dataset, batch_size, True)
+    test_original_dataloader = DataLoader(test_original_dataset, batch_size, True)
 
     logger.info('Building graph')
     graph = tf.Graph()
@@ -363,7 +373,7 @@ def train(epochs=10,
     with graph.as_default():
         ckpt = tf.train.get_checkpoint_state(rove_path)
         saver = tf.train.import_meta_graph(ckpt.model_checkpoint_path+'.meta')
-        rove_input = graph.get_tensor_by_name('Placeholder:0')
+        rove_input = graph.get_tensor_by_name('input:0')
         rove_output = graph.get_tensor_by_name('target:0')
         tf.stop_gradient(rove_output)
         model = RNN(sequence_length=seq_len,
@@ -406,6 +416,10 @@ def train(epochs=10,
         sw_val = tf.summary.FileWriter(writer_name + '_val', sess.graph)
         sw_val_orig = tf.summary.FileWriter(writer_name + '_val_original', sess.graph)
 
+        #
+        # Training loop
+        #
+
         exit_iteration_flag = False
         for epoch in range(epochs):
             if exit_iteration_flag:
@@ -413,7 +427,6 @@ def train(epochs=10,
 
             logger.info(f'Epoch {epoch}')
             for i, (batch, label) in enumerate(train_dataloader):
-                _batch_time = time()
                 if i * (epoch+1) > max_iters:
                     logger.warning('Exited training loop due to max_iters rule')
                     exit_iteration_flag = True
@@ -422,9 +435,8 @@ def train(epochs=10,
                 sess.run(tf.local_variables_initializer())
                 step = sess.run(global_step)
 
-                experiment.log_metric('rove_batch_time', time() - _batch_time)
                 feed_dict = {
-                    rove_input: batch,  # TODO: preprocess batch in dataset
+                    rove_input: batch,
                     model.labels: label,
                     model.dropout_prob: dropout
                 }
@@ -433,16 +445,10 @@ def train(epochs=10,
                 experiment.set_step(step)
                 experiment.log_metric('loss', loss)
 
-                experiment.log_metric('batch_time', time() - _batch_time)
-
                 if step % 100 == 0:
-                    acc_val = evaluate(model, val_dataloader, sess, rove_input, sw_val, step)
-                    acc_train = evaluate(model, train_dataloader, sess, rove_input, sw, step)
-                    acc_val_orig = evaluate(model, val_original_dataloader, sess, rove_input, sw_val_orig, step)
-                    experiment.log_multiple_metrics({'accuracy_train': acc_train,
-                                                     'accuracy_val': acc_val,
-                                                     'accuracy_val_original_data': acc_val_orig})
-                    logger.info(f'Val: {acc_val}')
+                    evaluate(model, val_dataloader, sess, rove_input, sw_val, step)
+                    evaluate(model, train_dataloader, sess, rove_input, sw, step)
+                    evaluate(model, val_original_dataloader, sess, rove_input, sw_val_orig, step)
 
             # checkpoint
             os.makedirs(save_model_path, exist_ok=True)
@@ -461,78 +467,65 @@ def train(epochs=10,
 
         logger.info('Training is finished')
 
-    logging.info('Test evaluation')
-    test_dataset = MokoronDataset('../text_classification/data/mokoron/test.csv',
-                                  text_field='text_spellchecked',
-                                  label_field='sentiment',
-                                  vocab=vocab,
-                                  noise_level=noise_level,
-                                  max_text_length=seq_len)
-    test_original_dataset = MokoronDataset('../text_classification/data/mokoron/test.csv',
-                                           text_field='text_original',
-                                           label_field='sentiment',
-                                           vocab=vocab,
-                                           noise_level=0,
-                                           max_text_length=seq_len)
+        #
+        # Test loop
+        #
+        logging.info('Test evaluation')
 
-    test_dataloader = DataLoader(test_dataset, batch_size, True)
-    test_original_dataloader = DataLoader(test_original_dataset, batch_size, True)
+        # acc_test,f1_test,noise_level_test,model_type,noise_level_train,acc_train,f1_train
+        results = []
+        for _ in tqdm(range(10), leave=False):  # 10 times for statistics
+            test_metrics = model.evaluate(test_dataloader, sess, rove_input)
+            writer.add_scalar('f1_test', test_metrics['f1'], step)
+            writer.add_scalar('accuracy_test', test_metrics['accuracy'], step)
 
-    # acc_test,f1_test,noise_level_test,model_type,noise_level_train,acc_train,f1_train
-    results = []
-    for _ in tqdm(range(10), leave=False):  # 10 times for statistics
-        test_metrics = model.evaluate(test_dataloader, sess, rove_input)
+            results.append({'acc_test': test_metrics['accuracy'],
+                            'f1_test': test_metrics['f1'],
+                            'noise_level_test': noise_level,
+                            'model_type': 'rove_rnn',
+                            'noise_level_train': noise_level})
+
+        test_metrics = model.evaluate(test_original_dataloader, sess, rove_input)
         writer.add_scalar('f1_test', test_metrics['f1'], step)
         writer.add_scalar('accuracy_test', test_metrics['accuracy'], step)
 
         results.append({'acc_test': test_metrics['accuracy'],
                         'f1_test': test_metrics['f1'],
-                        'noise_level_test': noise_level,
+                        'noise_level_test': -1,
                         'model_type': 'rove_rnn',
                         'noise_level_train': noise_level})
+        os.makedirs(os.path.dirname(save_results_path), exist_ok=True)
+        if os.path.exists(save_results_path):
+            old_results = pd.read_csv(save_results_path)
+        else:
+            old_results = pd.DataFrame()
 
-    test_metrics = model.evaluate(test_original_dataloader, sess, rove_input)
-    writer.add_scalar('f1_test', test_metrics['f1'], step)
-    writer.add_scalar('accuracy_test', test_metrics['accuracy'], step)
-
-    results.append({'acc_test': test_metrics['accuracy'],
-                    'f1_test': test_metrics['f1'],
-                    'noise_level_test': noise_level,
-                    'model_type': 'rove_rnn',
-                    'noise_level_train': noise_level})
-    os.makedirs(os.path.dirname(save_results_path), exist_ok=True)
-    if os.path.exists(save_results_path):
-        old_results = pd.read_csv(save_results_path)
-    else:
-        old_results = pd.DataFrame()
-    
-    results_df = pd.concat([old_results, pd.DataFrame(results)], sort=False)
-    results_df.to_csv(save_results_path, index=False)
+        results_df = pd.concat([old_results, pd.DataFrame(results)], sort=False)
+        results_df.to_csv(save_results_path, index=False)
 
 
-def evaluate(model, dataloader, sess, rove, sw, step, iters=5):
+def evaluate(model, dataloader, sess, rove_input, sw, step, iters=5):
     sess.run(tf.local_variables_initializer())
     for j, (batch, label) in enumerate(dataloader):
         if j >= iters:
             break
-        batch = rove.sample(batch)
 
         feed_dict = {
-            model.input_vectors: batch,
+            rove_input: batch,
             model.labels: label,
             model.dropout_prob: 0
         }
         sess.run(model.metrics_ops, feed_dict=feed_dict)
-    acc, summ = sess.run([model.accuracy, model.metrics_summary])
+    summ = sess.run(model.metrics_summary)
     sw.add_summary(summ, step)
-    return acc
+    return summ
 
 
-def noise_experiment():
-    noise_levels = []
+def noise_experiment(**kwargs):
+    noise_levels = np.concatenate([np.arange(0, 0.05, 0.01), np.arange(0.05, 0.2, 0.025)])
     for noise_level in noise_levels:
-        train(noise_level=noise_level)
+        train(noise_level=noise_level, **kwargs)
 
 
 if __name__ == '__main__':
-    train()
+    noise_experiment(max_iters=2500)
