@@ -23,7 +23,7 @@ from utils import letters2vec
 
 with open('comet.apikey') as f:
     apikey = f.read()
-experiment = Experiment(api_key=apikey, project_name='rove_classifier', auto_metric_logging=True, disabled=False)
+experiment = Experiment(api_key=apikey, project_name='rove_classifier', auto_metric_logging=True, disabled=True)
 
 logger = logging.getLogger()
 
@@ -207,7 +207,7 @@ class RNN:
             tf.summary.histogram('logits_bias', logits_layer.weights[1])
 
             # Calculate mean cross-entropy loss
-            losses = tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.logits, labels=labels_one_hot)
+            losses = tf.nn.softmax_cross_entropy_with_logits(logits=self.logits, labels=labels_one_hot)
             self.loss = tf.reduce_mean(losses, name='loss')
 
         with tf.variable_scope('metrics'):
@@ -301,7 +301,8 @@ def train(rove_path,
           use_gradclip=False,
           gradclip_norm=5,
           noise_level=0.05,
-          max_iters=2500):
+          max_iters=2500,
+          original_dataset=False):
 
     hyperparams = {'epochs': epochs,
                    'dropout': dropout,
@@ -364,6 +365,9 @@ def train(rove_path,
         ALPHABET += [s for s in """абвгдеёжзийклмнопрстуфхцчшщъыьэюя"""]
     else:
         raise ValueError(f'Incorrect dataset name: {dataset}')
+    
+    if original_dataset:
+        text_field = text_field_original
 
     train_dataset = MokoronDataset(basepath + 'train.csv',
                                    text_field=text_field,
@@ -552,8 +556,10 @@ def evaluate(model, dataloader, sess, rove_input, sw, step, iters=5):
     return summ
 
 
-def noise_experiment(dataset, rove_path, **kwargs):
-    save_results_path = f'results/rove_{dataset}.csv'
+def noise_experiment(dataset, rove_path, comment='', **kwargs):
+    if comment != '':
+        comment = '_' + comment.lstrip('_')
+    save_results_path = f'results/rove_{dataset}{comment}.csv'
     if os.path.exists(save_results_path):
         if input(f'File at path {save_results_path} exists, delete it? (y/n)') != 'y':
             exit(1)
@@ -572,23 +578,26 @@ def noise_experiment(dataset, rove_path, **kwargs):
             results_df = pd.concat([old_results, pd.DataFrame(results)], sort=False)
             results_df.to_csv(save_results_path, index=False)
 
-# def original_experiment(dataset, rove_path, **kwargs):
-#     save_results_path = f'results/rove_{dataset}.csv'
-#     if os.path.exists(save_results_path):
-#         if input(f'File at path {save_results_path} exists, delete it? (y/n)') != 'y':
-#             exit(1)
+def original_experiment(dataset, rove_path, **kwargs):
+    save_results_path = f'results/rove_{dataset}_original.csv'
+    if os.path.exists(save_results_path):
+        if input(f'File at path {save_results_path} exists, delete it? (y/n)') != 'y':
+            exit(1)
 
-#     for _ in range(N_TRAINS):
-#         for noise_level in NOISE_LEVELS:
-#             results = train(noise_level=noise_level, dataset=dataset, rove_path=rove_path, **kwargs)
-#             os.makedirs(os.path.dirname(save_results_path), exist_ok=True)
-#             if os.path.exists(save_results_path):
-#                 old_results = pd.read_csv(save_results_path)
-#             else:
-#                 old_results = pd.DataFrame()
+    for _ in range(N_TRAINS):
+        results = train(noise_level=0,
+                        dataset=dataset,
+                        rove_path=rove_path,
+                        original_dataset=True,
+                        **kwargs)
+        os.makedirs(os.path.dirname(save_results_path), exist_ok=True)
+        if os.path.exists(save_results_path):
+            old_results = pd.read_csv(save_results_path)
+        else:
+            old_results = pd.DataFrame()
 
-#             results_df = pd.concat([old_results, pd.DataFrame(results)], sort=False)
-#             results_df.to_csv(save_results_path, index=False)
+        results_df = pd.concat([old_results, pd.DataFrame(results)], sort=False)
+        results_df.to_csv(save_results_path, index=False)
 
 
 if __name__ == '__main__':
@@ -596,12 +605,24 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset-name', choices=['mokoron', 'airline-tweets', 'rusentiment'])
     parser.add_argument('--rove-path', help='path to saved rove dir with metagraph and chars_vocab.pkl')
+    parser.add_argument('--comment', default='')
+    parser.add_argument('--train-dataset-type', default='both', choices=['original', 'noised', 'both'])
     # parser.add_argument('--experiment-type', default='both', choices=['noised', 'original', 'both'])
     # parser.add_argument('-y', default=False, action='store_true', help='yes to all')
 
     args = parser.parse_args()
-    noise_experiment(dataset=args.dataset_name,
-                     rove_path=args.rove_path,
-                     dropout=0.5,
-                     max_iters=3000,
-                     cell_type='gru')
+
+    dataset_type = args.train_dataset_type
+    if dataset_type == 'noised' or dataset_type == 'both':
+        noise_experiment(dataset=args.dataset_name,
+                         rove_path=args.rove_path,
+                         dropout=0.5,
+                         max_iters=1500,
+                         cell_type='gru',
+                         comment=args.comment)
+
+    if dataset_type == 'original' or dataset_type == 'both':
+        original_experiment(dataset=args.dataset_name,
+                            rove_path=args.rove_path,
+                            dropout=0.5,
+                            max_iters=1500)
