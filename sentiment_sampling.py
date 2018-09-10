@@ -29,12 +29,6 @@ import math
 from nltk.tokenize import word_tokenize
 
 
-
-from keras.layers import LSTM, Convolution1D, Flatten, Dropout, Dense
-from keras.layers.embeddings import Embedding
-from keras.models import Sequential
-
-
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--mode", help="random, word2vec, robust", type=str, default="random")
@@ -63,18 +57,18 @@ def linear_svm(training_data, testing_data, training_target, testing_target):
     return result
 
 
-def keras_test(train, test, train_label, test_label):
-    model = Sequential()
-    model.add(Dense(32, activation='relu', input_dim=300))
-    model.add(Dense(1, activation='sigmoid'))
-    model.compile(optimizer='rmsprop',
-                  loss='binary_crossentropy',
-                  metrics=['accuracy'])
+# def keras_test(train, test, train_label, test_label):
+#     model = Sequential()
+#     model.add(Dense(32, activation='relu', input_dim=300))
+#     model.add(Dense(1, activation='sigmoid'))
+#     model.compile(optimizer='rmsprop',
+#                   loss='binary_crossentropy',
+#                   metrics=['accuracy'])
 
-    model.fit(train, train_label, epochs=9, batch_size=8, verbose=2)
-    score = model.evaluate(test, test_label, batch_size=1, verbose=2)
-    with open(args.model_type + "_results_sentiment.txt", "at") as f_out:
-        f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, score[1]))
+#     model.fit(train, train_label, epochs=9, batch_size=8, verbose=2)
+#     score = model.evaluate(test, test_label, batch_size=1, verbose=2)
+#     with open(args.model_type + "_results_sentiment.txt", "at") as f_out:
+#         f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, score[1]))
 
 
 
@@ -85,7 +79,7 @@ def samping_sentiment_data(args, data, labels):
     test = results[:idx_for_split]
     train_label = labels[idx_for_split:]
     test_label = labels[:idx_for_split]
-    keras_test(train, test, train_label, test_label)
+    # keras_test(train, test, train_label, test_label)
     roc_auc_score = linear_svm(train, test, train_label, test_label)
     with open(args.model_type + "_results_sentiment.txt", "at") as f_out:
         f_out.write("robust,%.2f,%.3f\n" % (args.noise_level, roc_auc_score))

@@ -23,7 +23,7 @@ from utils import letters2vec
 
 with open('comet.apikey') as f:
     apikey = f.read()
-experiment = Experiment(api_key=apikey, project_name='rove_classifier', auto_metric_logging=False, disabled=True)
+experiment = Experiment(api_key=apikey, project_name='rove_classifier', auto_metric_logging=True, disabled=False)
 
 logger = logging.getLogger()
 
@@ -42,10 +42,10 @@ logger.addHandler(consoleHandler)
 
 logger.setLevel(logging.INFO)
 
-
+NOISE_LEVELS = np.concatenate([np.arange(0, 0.05, 0.01), np.arange(0.05, 0.2, 0.025)])
+N_TRAINS = 10
+N_EVALS = 1
 ALPHABET = ['<UNK>', '\n'] + [s for s in """ abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'’’/\|_@#$%ˆ&* ̃‘+-=<>()[]{}"""]
-ALPHABET = [t for t in ALPHABET if t not in ('(', ')')]
-
 
 class IMDBDataset:
     ...
@@ -76,7 +76,7 @@ class MokoronDataset:
         self.label2int = {l: i for i, l in enumerate(sorted(self.data[self.label_field].unique()))}
         self.label_placeholder = np.zeros(len(self.label2int))
         self.max_text_length = max_text_length
-        self.vocab = vocab
+        self.vocab = vocab  # dict {..., 'Q': 151, 'q': 152, ..., '': 0}
 
     def __len__(self):
         return len(self.data)
@@ -288,7 +288,10 @@ class RNN:
         return res
 
 
-def train(epochs=10,
+def train(rove_path,
+          dataset,
+          cell_type='gru',
+          epochs=10,
           lr=1e-3,
           batch_size=64,
           rnn_size=256,
@@ -298,8 +301,7 @@ def train(epochs=10,
           use_gradclip=False,
           gradclip_norm=5,
           noise_level=0.05,
-          max_iters=2500,
-          save_model_path='save/classifier/mokoron'):
+          max_iters=2500):
 
     hyperparams = {'epochs': epochs,
                    'dropout': dropout,
@@ -310,60 +312,92 @@ def train(epochs=10,
                    'batch_size': batch_size,
                    'noise_level': noise_level,
                    'seq_len': seq_len,
-                   'max_iters': max_iters}
+                   'max_iters': max_iters,
+                   'cell_type': cell_type}
 
     if use_gradclip:
         hyperparams['gradclip_norm'] = gradclip_norm
 
     experiment.log_multiple_params(hyperparams)
 
-    rove_path = 'save/ruscorpora_bisru'
     with open(os.path.join(rove_path, 'chars_vocab.pkl'), 'rb') as f:
         _, vocab = cPickle.load(f)
 
-    save_results_path = 'results/%s_%s.csv' % ('rove', 'mokoron')
-
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
-
-    save_model_path = save_model_path + current_time
-    writer_name = f'runs/{current_time}/mokoron'
+    noise_level_str = f'{round(noise_level * 100)}_'
+    save_model_path = f'save/classifier/{dataset}_{noise_level_str}_{current_time}'
+    writer_name = f'runs/{current_time}/{dataset}'
     writer = SummaryWriter(writer_name + '/X', comment='_test')
 
+    #
+    # Dataset
+    #
     logger.info('Preparing datasets')
-    train_dataset = MokoronDataset('../text_classification/data/mokoron/train.csv',
-                                   text_field='text_spellchecked',
-                                   label_field='sentiment',
+
+    dataset = dataset.lower()
+    if dataset == 'mokoron':
+        basepath = '../text_classification/data/mokoron/'
+        text_field = 'text_spellchecked'
+        text_field_original = 'text_original'
+        label_field = 'sentiment'
+
+        num_classes = 2
+        seq_len = 32
+        ALPHABET += [s for s in """абвгдеёжзийклмнопрстуфхцчшщъыьэюя"""]
+        ALPHABET = [s for s in ALPHABET if s not in ('(', ')')]
+    elif dataset == 'airline-tweets':
+        basepath = '../text_classification/data/airline_tweets/'
+        text_field = 'text_spellchecked'
+        text_field_original = 'text_original'
+        label_field = 'airline_sentiment'
+
+        num_classes = 3
+        seq_len = 32
+    elif dataset == 'rusentiment':
+        basepath = '/data/classification/rusentiment/preselected/'
+        text_field = 'text_spellchecked'
+        text_field_original = 'text'
+        label_field = 'label'
+
+        num_classes = 5
+        seq_len = 32
+        ALPHABET += [s for s in """абвгдеёжзийклмнопрстуфхцчшщъыьэюя"""]
+    else:
+        raise ValueError(f'Incorrect dataset name: {dataset}')
+
+    train_dataset = MokoronDataset(basepath + 'train.csv',
+                                   text_field=text_field,
+                                   label_field=label_field,
                                    vocab=vocab,
                                    noise_level=noise_level,
                                    max_text_length=seq_len)
-    val_dataset = MokoronDataset('../text_classification/data/mokoron/validation.csv',
-                                 text_field='text_spellchecked',
-                                 label_field='sentiment',
+    val_dataset = MokoronDataset(basepath + 'validation.csv',
+                                 text_field=text_field,
+                                 label_field=label_field,
                                  vocab=vocab,
                                  noise_level=noise_level,
                                  max_text_length=seq_len)
-    val_original_dataset = MokoronDataset('../text_classification/data/mokoron/validation.csv',
-                                          text_field='text_original',
-                                          label_field='sentiment',
-                                          vocab=vocab,
-                                          noise_level=0,
-                                          max_text_length=seq_len)
-    test_dataset = MokoronDataset('../text_classification/data/mokoron/test.csv',
-                                  text_field='text_spellchecked',
-                                  label_field='sentiment',
+    test_dataset = MokoronDataset(basepath + 'test.csv',
+                                  text_field=text_field,
+                                  label_field=label_field,
                                   vocab=vocab,
                                   noise_level=noise_level,
                                   max_text_length=seq_len)
-    test_original_dataset = MokoronDataset('../text_classification/data/mokoron/test.csv',
-                                           text_field='text_original',
-                                           label_field='sentiment',
+    val_original_dataset = MokoronDataset(basepath + 'validation.csv',
+                                          text_field=text_field_original,
+                                          label_field=label_field,
+                                          vocab=vocab,
+                                          noise_level=0,
+                                          max_text_length=seq_len)
+    test_original_dataset = MokoronDataset(basepath + 'test.csv',
+                                           text_field=text_field_original,
+                                           label_field=label_field,
                                            vocab=vocab,
                                            noise_level=0,
                                            max_text_length=seq_len)
 
     train_dataloader = DataLoader(train_dataset, batch_size, True)
     val_dataloader = DataLoader(val_dataset, batch_size, True)
-    val_original_dataloader = DataLoader(val_original_dataset, batch_size, True)
     test_dataloader = DataLoader(test_dataset, batch_size, True)
     test_original_dataloader = DataLoader(test_original_dataset, batch_size, True)
 
@@ -377,8 +411,8 @@ def train(epochs=10,
         rove_output = graph.get_tensor_by_name('target:0')
         tf.stop_gradient(rove_output)
         model = RNN(sequence_length=seq_len,
-                    num_classes=2,
-                    cell_type='sru',
+                    num_classes=num_classes,
+                    cell_type=cell_type,
                     embeddings_size=300,
                     hidden_size=rnn_size,
                     input_tensor=rove_output)
@@ -446,9 +480,11 @@ def train(epochs=10,
                 experiment.log_metric('loss', loss)
 
                 if step % 100 == 0:
-                    evaluate(model, val_dataloader, sess, rove_input, sw_val, step)
-                    evaluate(model, train_dataloader, sess, rove_input, sw, step)
-                    evaluate(model, val_original_dataloader, sess, rove_input, sw_val_orig, step)
+                    with experiment.train():
+                        evaluate(model, train_dataloader, sess, rove_input, sw, step)
+                    with experiment.validate():
+                        evaluate(model, val_dataloader, sess, rove_input, sw_val, step)
+                    # evaluate(model, val_original_dataloader, sess, rove_input, sw_val_orig, step)
 
             # checkpoint
             os.makedirs(save_model_path, exist_ok=True)
@@ -474,7 +510,7 @@ def train(epochs=10,
 
         # acc_test,f1_test,noise_level_test,model_type,noise_level_train,acc_train,f1_train
         results = []
-        for _ in tqdm(range(10), leave=False):  # 10 times for statistics
+        for _ in tqdm(range(N_EVALS), leave=False):
             test_metrics = model.evaluate(test_dataloader, sess, rove_input)
             writer.add_scalar('f1_test', test_metrics['f1'], step)
             writer.add_scalar('accuracy_test', test_metrics['accuracy'], step)
@@ -484,24 +520,19 @@ def train(epochs=10,
                             'noise_level_test': noise_level,
                             'model_type': 'rove_rnn',
                             'noise_level_train': noise_level})
+            logging.info(f"noised test noise level: {noise_level}, f1: {test_metrics['f1']}")
 
         test_metrics = model.evaluate(test_original_dataloader, sess, rove_input)
         writer.add_scalar('f1_test', test_metrics['f1'], step)
         writer.add_scalar('accuracy_test', test_metrics['accuracy'], step)
+        logging.info(f"original test f1: {test_metrics['f1']}")
 
         results.append({'acc_test': test_metrics['accuracy'],
                         'f1_test': test_metrics['f1'],
                         'noise_level_test': -1,
                         'model_type': 'rove_rnn',
                         'noise_level_train': noise_level})
-        os.makedirs(os.path.dirname(save_results_path), exist_ok=True)
-        if os.path.exists(save_results_path):
-            old_results = pd.read_csv(save_results_path)
-        else:
-            old_results = pd.DataFrame()
-
-        results_df = pd.concat([old_results, pd.DataFrame(results)], sort=False)
-        results_df.to_csv(save_results_path, index=False)
+        return results
 
 
 def evaluate(model, dataloader, sess, rove_input, sw, step, iters=5):
@@ -521,11 +552,56 @@ def evaluate(model, dataloader, sess, rove_input, sw, step, iters=5):
     return summ
 
 
-def noise_experiment(**kwargs):
-    noise_levels = np.concatenate([np.arange(0, 0.05, 0.01), np.arange(0.05, 0.2, 0.025)])
-    for noise_level in noise_levels:
-        train(noise_level=noise_level, **kwargs)
+def noise_experiment(dataset, rove_path, **kwargs):
+    save_results_path = f'results/rove_{dataset}.csv'
+    if os.path.exists(save_results_path):
+        if input(f'File at path {save_results_path} exists, delete it? (y/n)') != 'y':
+            exit(1)
+
+    logging.info(f'Starting noise experiment for the following noise levels: {NOISE_LEVELS}')
+
+    for _ in range(N_TRAINS):
+        for noise_level in NOISE_LEVELS:
+            results = train(noise_level=noise_level, dataset=dataset, rove_path=rove_path, **kwargs)
+            os.makedirs(os.path.dirname(save_results_path), exist_ok=True)
+            if os.path.exists(save_results_path):
+                old_results = pd.read_csv(save_results_path)
+            else:
+                old_results = pd.DataFrame()
+
+            results_df = pd.concat([old_results, pd.DataFrame(results)], sort=False)
+            results_df.to_csv(save_results_path, index=False)
+
+# def original_experiment(dataset, rove_path, **kwargs):
+#     save_results_path = f'results/rove_{dataset}.csv'
+#     if os.path.exists(save_results_path):
+#         if input(f'File at path {save_results_path} exists, delete it? (y/n)') != 'y':
+#             exit(1)
+
+#     for _ in range(N_TRAINS):
+#         for noise_level in NOISE_LEVELS:
+#             results = train(noise_level=noise_level, dataset=dataset, rove_path=rove_path, **kwargs)
+#             os.makedirs(os.path.dirname(save_results_path), exist_ok=True)
+#             if os.path.exists(save_results_path):
+#                 old_results = pd.read_csv(save_results_path)
+#             else:
+#                 old_results = pd.DataFrame()
+
+#             results_df = pd.concat([old_results, pd.DataFrame(results)], sort=False)
+#             results_df.to_csv(save_results_path, index=False)
 
 
 if __name__ == '__main__':
-    noise_experiment(max_iters=2500)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset-name', choices=['mokoron', 'airline-tweets', 'rusentiment'])
+    parser.add_argument('--rove-path', help='path to saved rove dir with metagraph and chars_vocab.pkl')
+    # parser.add_argument('--experiment-type', default='both', choices=['noised', 'original', 'both'])
+    # parser.add_argument('-y', default=False, action='store_true', help='yes to all')
+
+    args = parser.parse_args()
+    noise_experiment(dataset=args.dataset_name,
+                     rove_path=args.rove_path,
+                     dropout=0.5,
+                     max_iters=3000,
+                     cell_type='gru')
