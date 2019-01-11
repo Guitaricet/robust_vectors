@@ -47,6 +47,7 @@ N_TRAINS = 10
 N_EVALS = 1
 ALPHABET = ['<UNK>', '\n'] + [s for s in """ abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'’’/\|_@#$%ˆ&* ̃‘+-=<>()[]{}"""]
 
+
 class IMDBDataset:
     ...
 
@@ -302,8 +303,12 @@ def train(rove_path,
           gradclip_norm=5,
           noise_level=0.05,
           max_iters=2500,
-          original_dataset=False):
+          original_dataset=False,
+          train_jointly=False
+          ):
 
+    # TODO: crutch
+    ALPHABET = ['<UNK>', '\n'] + [s for s in """ abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'’’/\|_@#$%ˆ&* ̃‘+-=<>()[]{}"""]
     hyperparams = {'epochs': epochs,
                    'dropout': dropout,
                    'learning_rate': lr,
@@ -342,7 +347,7 @@ def train(rove_path,
         text_field_original = 'text_original'
         label_field = 'sentiment'
 
-        num_classes = 2
+        n_classes = 2
         seq_len = 32
         ALPHABET += [s for s in """абвгдеёжзийклмнопрстуфхцчшщъыьэюя"""]
         ALPHABET = [s for s in ALPHABET if s not in ('(', ')')]
@@ -352,7 +357,7 @@ def train(rove_path,
         text_field_original = 'text_original'
         label_field = 'airline_sentiment'
 
-        num_classes = 3
+        n_classes = 3
         seq_len = 32
     elif dataset == 'rusentiment':
         basepath = '/data/classification/rusentiment/preselected/'
@@ -360,9 +365,25 @@ def train(rove_path,
         text_field_original = 'text'
         label_field = 'label'
 
-        num_classes = 5
+        n_classes = 5
         seq_len = 32
         ALPHABET += [s for s in """абвгдеёжзийклмнопрстуфхцчшщъыьэюя"""]
+    elif dataset == 'imdb':
+        basepath = '/data/classification/IMDB/'
+        text_field = 'text'
+        text_field_original = 'text'
+        label_field = 'sentiment'
+
+        n_classes = 2
+        seq_len = 32  # 256
+    elif dataset == 'sentirueval':
+        basepath = '/data/classification/SentiRuEval_data/all_data/'
+        text_field = 'text_spellchecked'
+        text_field_original = 'text'
+        label_field = 'label'
+
+        n_classes = 4
+        seq_len = 32
     else:
         raise ValueError(f'Incorrect dataset name: {dataset}')
     
@@ -413,9 +434,10 @@ def train(rove_path,
         saver = tf.train.import_meta_graph(ckpt.model_checkpoint_path+'.meta')
         rove_input = graph.get_tensor_by_name('input:0')
         rove_output = graph.get_tensor_by_name('target:0')
-        tf.stop_gradient(rove_output)
+        if not train_jointly:
+            tf.stop_gradient(rove_output)
         model = RNN(sequence_length=seq_len,
-                    num_classes=num_classes,
+                    num_classes=n_classes,
                     cell_type=cell_type,
                     embeddings_size=300,
                     hidden_size=rnn_size,
@@ -603,10 +625,11 @@ def original_experiment(dataset, rove_path, **kwargs):
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset-name', choices=['mokoron', 'airline-tweets', 'rusentiment'])
+    parser.add_argument('--dataset-name')
     parser.add_argument('--rove-path', help='path to saved rove dir with metagraph and chars_vocab.pkl')
     parser.add_argument('--comment', default='')
     parser.add_argument('--train-dataset-type', default='both', choices=['original', 'noised', 'both'])
+    parser.add_argument('--train-jointly', default=False, action='store_true', help='do not stop gradients propagating to RoVe')
     # parser.add_argument('--experiment-type', default='both', choices=['noised', 'original', 'both'])
     # parser.add_argument('-y', default=False, action='store_true', help='yes to all')
 
@@ -619,10 +642,12 @@ if __name__ == '__main__':
                          dropout=0.5,
                          max_iters=1500,
                          cell_type='gru',
-                         comment=args.comment)
+                         comment=args.comment,
+                         train_jointly=args.train_jointly)
 
     if dataset_type == 'original' or dataset_type == 'both':
         original_experiment(dataset=args.dataset_name,
                             rove_path=args.rove_path,
                             dropout=0.5,
-                            max_iters=1500)
+                            max_iters=1500,
+                            train_jointly=args.train_jointly)

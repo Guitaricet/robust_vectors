@@ -186,7 +186,7 @@ def train(args):
     if args.model == 'biLSTM':
         model = BiLSTM(args)
         train_bidirectional_model(model, data_loader, args, ckpt)
-    if args.model == 'biSRU':
+    elif args.model == 'biSRU':
         model = BiLSTM(args)
         train_bidirectional_model(model, data_loader, args, ckpt)
     elif args.model == 'stackBiLstm':
